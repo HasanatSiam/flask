@@ -1,3 +1,4 @@
+import ast
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from datetime import datetime
@@ -201,4 +202,139 @@ def combined_tasks_v3(page, limit):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+
+@async_task_bp.route('/view_requests_v4/<int:page>/<int:limit>', methods=['GET'])
+@jwt_required()
+def combined_tasks_v4(page, limit):
+    try:
+        days = request.args.get('days', type=int)
+        search_query = request.args.get('task_name', '').strip().lower()
+
+        query = DefAsyncTaskRequest.query
+
+        if search_query and days is None:
+            days = 7
+
+        if days is not None:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            query = query.filter(DefAsyncTaskRequest.creation_date >= cutoff_date)
+
+        if search_query:
+            search_underscore = search_query.replace(' ', '_')
+            search_space = search_query.replace('_', ' ')
+            query = query.filter(or_(
+                DefAsyncTaskRequest.task_name.ilike(f'%{search_query}%'),
+                DefAsyncTaskRequest.task_name.ilike(f'%{search_underscore}%'),
+                DefAsyncTaskRequest.task_name.ilike(f'%{search_space}%')
+            ))
+
+        paginated = query.order_by(DefAsyncTaskRequest.creation_date.desc()) \
+                         .paginate(page=page, per_page=limit, error_out=False)
+
+        db_tasks = paginated.items
+
+        # db_tasks = query.order_by(DefAsyncTaskRequest.creation_date.desc()).all()
+        db_task_ids = {t.task_id for t in db_tasks if t.task_id}
+
+        flower_tasks = {}
+        try:
+            res = requests.get(f"{FLOWER_URL}/api/tasks", timeout=5)
+            if res.status_code == 200:
+                flower_tasks = res.json()
+        except:
+            pass  # keep flower_tasks empty if error
+
+        items = []
+
+
+        # Add Flower tasks first (skip duplicates if already in DB)
+        for tid, ftask in flower_tasks.items():
+            # if tid in db_task_ids:
+            #     continue  # skip duplicate
+            if tid in db_task_ids or ftask.get("state", "").lower() == "success":
+                continue 
+
+            args_list = []
+            try:
+                args_list = ast.literal_eval(ftask.get("args", "[]"))  # safely parse string repr
+            except Exception:
+                args_list = []
+
+            script_name          = args_list[0] if len(args_list) > 0 else None
+            user_task_name       = args_list[1] if len(args_list) > 1 else None
+            task_name            = args_list[2] if len(args_list) > 2 else None
+            user_schedule_name   = args_list[3] if len(args_list) > 3 else None
+            redbeat_schedule_name= args_list[4] if len(args_list) > 4 else None
+            schedule_type        = args_list[5] if len(args_list) > 5 else None
+            schedule_data        = args_list[6] if len(args_list) > 6 else None
+
+            items.append({
+                "uuid": ftask.get("uuid"),
+                "task_id": tid,
+                "script_name": script_name,
+                "user_task_name": user_task_name,
+                "task_name": task_name,                   
+                "user_schedule_name": user_schedule_name,
+                "redbeat_schedule_name": redbeat_schedule_name,
+                "schedule_type": schedule_type,
+                "schedule": schedule_data,
+                "state": ftask.get("state"),
+                "worker": ftask.get("worker"),
+                # "timestamp": ftask.get("timestamp"),
+                "result": ftask.get("result"),
+                "args": ftask.get("args"),                 
+                "kwargs": ftask.get("kwargs"),
+                "parameters": None,                        # DB-only field
+                "request_id": None,
+                "executor": None,
+                "created_by": None,
+                "creation_date": None,
+                "last_updated_by": None,
+                "last_updated_date": None
+            })
+
+        
+        for t in db_tasks:
+            item = t.json()  # get all DB fields
+            # add Flower fields
+            if t.task_id and t.task_id in flower_tasks:
+                ftask = flower_tasks[t.task_id]
+                item["uuid"] = ftask.get("uuid")
+                item["state"] = ftask.get("state")
+                item["worker"] = ftask.get("worker")
+            else:
+                item["uuid"] = None
+                item["state"] = None
+                item["worker"] = None
+            items.append(item)
+
+        
+        
+
+        return make_response(jsonify({
+            "items": items,
+            "total": paginated.total,
+            "pages": paginated.pages,
+            "page": paginated.page
+        }), 200)
+    
+
+        # --- Manual pagination on merged list ---
+        # total = len(items)
+        # start = (page - 1) * limit
+        # end = start + limit
+        # paginated_items = items[start:end]
+        # pages = (total + limit - 1) // limit  # ceil division
+
+
+        # return make_response(jsonify({
+        #     "items": paginated_items,
+        #     "total": total,
+        #     "pages": pages,
+        #     "page": page
+        # }), 200)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
