@@ -10,15 +10,15 @@ from .python_v1 import execute as python_script
 from .extensions import db
 
 
-load_dotenv()
+# load_dotenv()
 # Define the path where the .env file is stored
-# ENV_PATH = "/d01/def/app/server/.server_env"
+ENV_PATH = "/d01/def/app/server/.server_env"
 
-# # Load the .env file (check if it exists before loading it)
-# if os.path.exists(ENV_PATH):
-#     load_dotenv(ENV_PATH)
-# else:
-#     print(f"Error: The .env file was not found at {ENV_PATH}")
+# Load the .env file (check if it exists before loading it)
+if os.path.exists(ENV_PATH):
+    load_dotenv(ENV_PATH)
+else:
+    print(f"Error: The .env file was not found at {ENV_PATH}")
 
 secret_key = os.getenv('JWT_SECRET_ACCESS_TOKEN')
 database_url = os.getenv("DATABASE_URL")
