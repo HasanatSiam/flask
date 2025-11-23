@@ -1,13 +1,10 @@
 # red_functions.py
-from redbeat import RedBeatSchedulerEntry # RedBeat scheduler for periodic tasks
-from celery import current_app as celery  # Access the current Celery app
-from datetime import timedelta  # To define scheduling intervals
-from datetime import timedelta
+from redbeat import RedBeatSchedulerEntry 
+from celery import current_app as celery  
+from datetime import timedelta 
 from celery.schedules import schedule as celery_schedule
 
 import logging
-#from tasks.models import DefAsyncTask, DefAsyncTaskParam, DefAsyncTaskSchedule
-#from tasks.extensions import db 
 
 # Set up the logger
 logger = logging.getLogger(__name__)
@@ -78,34 +75,6 @@ def create_redbeat_schedule(schedule_name, executor, schedule_minutes=None, cron
 
     return {"message": "Task scheduled successfully!", "entry_name": entry.name}
 
-
-# def update_redbeat_schedule(schedule_name, schedule_minutes=1, args=None, kwargs=None, celery_app=None):
-#     # Default values for args and kwargs
-#     args = args or []
-#     kwargs = kwargs or {}
-
-#     # Define the schedule interval
-#     schedule_seconds = schedule_minutes * 60
-
-#     try:
-#         # Fetch the existing RedBeat entry
-#         entry = RedBeatSchedulerEntry.from_key(f"redbeat:{schedule_name}", app=celery_app)
-
-#         # Update entry fields
-#         entry.schedule = celery_schedule(schedule_seconds)  # Use celery.schedules.schedule for intervals
-#         entry.args = args  # Update args with extended values
-#         entry.kwargs = kwargs  # Update kwargs if provided
-
-#         # Save the updated entry back to Redis
-#         entry.save()
-#         print(f"RedBeat entry updated: {entry.name}")
-
-#     except Exception as e:
-#         print(f"Failed to update RedBeat entry: {e}")
-#         raise
-
-# def update_redbeat_schedule(schedule_name, task, schedule_minutes=1, args=None, kwargs=None, celery_app=None):
-    # Default values for args and kwargs
     args = args or []
     kwargs = kwargs or {}
 
