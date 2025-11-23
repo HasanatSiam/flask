@@ -81,6 +81,11 @@ EMAIL_PASS=your_email_password
 ```
 
 > **Note:** For the full `.env` file, please contact the PROCG Backend team.
+>
+> **Environment Loading:**
+> - For **local testing**, ensure `load_dotenv()` is used to load variables from the `.env` file.
+> - For **production**, use `env_path` or system environment variables directly.
+> - **Files to modify:** `config.py` and `executors/__init__.py`.
 
 ## Running the Application
 
