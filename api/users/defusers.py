@@ -13,9 +13,7 @@ from . import users_bp
 
 
 
-
 @users_bp.route('/defusers', methods=['POST'])
-
 @jwt_required()
 def create_def_user():
     try:
@@ -70,9 +68,8 @@ def create_def_user():
         return make_response(jsonify({"message": f"Error: {str(e)}"}), 500)
     
 
-
 @users_bp.route('/defusers', methods=['GET'])
-# @jwt_required()
+@jwt_required()
 def get_users():
     try:
         users = DefUser.query.all()

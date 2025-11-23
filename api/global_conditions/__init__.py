@@ -1,6 +1,6 @@
 from flask import Blueprint
 
-glob_conditions_bp = Blueprint("glob_conditions_bp", __name__)
+global_conditions_bp = Blueprint("global_conditions_bp", __name__)
 
 from .global_conditions import *
 from .global_condition_logics import *

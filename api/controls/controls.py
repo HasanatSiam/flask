@@ -20,41 +20,27 @@ from . import controls_bp
 #DEF_CONTROLS
 @controls_bp.route('/def_controls', methods=['GET'])
 @jwt_required()
-def get_all_controls():
+def get_def_controls():
     try:
-        controls = DefControl.query.order_by(DefControl.def_control_id.desc()).all()
-        return make_response(jsonify([c.json() for c in controls]), 200)
-    except Exception as e:
-        return make_response(jsonify({'message': 'Error fetching controls', 'error': str(e)}), 500)
+        def_control_id = request.args.get('def_control_id', type=int)
+        control_name = request.args.get('control_name', type=str)
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
 
+        # Case 1: Get by ID
+        if def_control_id:
+            control = DefControl.query.filter_by(def_control_id=def_control_id).first()
+            if control:
+                return make_response(jsonify({'result': control.json()}), 200)
+            return make_response(jsonify({'message': 'Control not found'}), 404)
 
-
-@controls_bp.route('/def_controls/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def get_paginated_controls(page, limit):
-    try:
-        paginated = DefControl.query.order_by(DefControl.def_control_id.desc()).paginate(page=page, per_page=limit, error_out=False)
-        return make_response(jsonify({
-            'items': [control.json() for control in paginated.items],
-            'total': paginated.total,
-            'pages': paginated.pages,
-            'page': paginated.page
-        }), 200)
-    except Exception as e:
-        return make_response(jsonify({'message': 'Error fetching controls', 'error': str(e)}), 500)
-
-
-
-@controls_bp.route('/def_controls/search/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def search_controls(page, limit):
-    try:
-        search_query = request.args.get('control_name', '').strip()
-        search_underscore = search_query.replace(' ', '_')
-        search_space = search_query.replace('_', ' ')
         query = DefControl.query
 
-        if search_query:
+        # Case 2: Search
+        if control_name:
+            search_query = control_name.strip()
+            search_underscore = search_query.replace(' ', '_')
+            search_space = search_query.replace('_', ' ')
             query = query.filter(
                 or_(
                     DefControl.control_name.ilike(f'%{search_query}%'),
@@ -63,28 +49,22 @@ def search_controls(page, limit):
                 )
             )
 
-        paginated = query.order_by(DefControl.def_control_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+        # Case 3: Pagination (Search or just List)
+        if page and limit:
+            paginated = query.order_by(DefControl.def_control_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [control.json() for control in paginated.items],
+                "total": paginated.total,
+                "pages": 1 if paginated.total == 0 else paginated.pages,
+                "page": paginated.page
+            }), 200)
 
-        return make_response(jsonify({
-            "items": [control.json() for control in paginated.items],
-            "total": paginated.total,
-            "pages": 1 if paginated.total == 0 else paginated.pages,
-            "page":  paginated.page
-        }), 200)
+        # Case 4: Get All (if no ID and no pagination)
+        controls = query.order_by(DefControl.def_control_id.desc()).all()
+        return make_response(jsonify({'result': [c.json() for c in controls]}), 200)
+
     except Exception as e:
-        return make_response(jsonify({'message': 'Error searching controls', 'error': str(e)}), 500)
-
-
-@controls_bp.route('/def_controls/<int:def_control_id>', methods=['GET'])
-@jwt_required()
-def get_control_by_id(def_control_id):
-    try:
-        control = DefControl.query.filter_by(def_control_id=def_control_id).first()
-        if control:
-            return make_response(jsonify(control.json()), 200)
-        return make_response(jsonify({'message': 'Control not found'}), 404)
-    except Exception as e:
-        return make_response(jsonify({'message': 'Error fetching control', 'error': str(e)}), 500)
+        return make_response(jsonify({'message': 'Error fetching controls', 'error': str(e)}), 500)
 
 
 @controls_bp.route('/def_controls', methods=['POST'])
@@ -116,10 +96,16 @@ def create_control():
     except Exception as e:
         return make_response(jsonify({'message': 'Error adding control', 'error': str(e)}), 500)
 
-@controls_bp.route('/def_controls/<int:def_control_id>', methods=['PUT'])
+
+
+@controls_bp.route('/def_controls', methods=['PUT'])
 @jwt_required()
-def update_control(def_control_id):
+def update_control():
     try:
+        def_control_id = request.args.get('def_control_id', type=int)
+        if not def_control_id:
+            return make_response(jsonify({'message': 'def_control_id is required'}), 400)
+
         control = DefControl.query.filter_by(def_control_id=def_control_id).first()
         if control:
             control.control_name = request.json.get('control_name', control.control_name)
@@ -147,10 +133,14 @@ def update_control(def_control_id):
         return make_response(jsonify({'message': 'Error editing control', 'error': str(e)}), 500)
 
 
-@controls_bp.route('/def_controls/<int:def_control_id>', methods=['DELETE'])
+@controls_bp.route('/def_controls', methods=['DELETE'])
 @jwt_required()
-def delete_control(def_control_id):
+def delete_control():
     try:
+        def_control_id = request.args.get('def_control_id', type=int)
+        if not def_control_id:
+            return make_response(jsonify({'message': 'def_control_id is required'}), 400)
+
         control = DefControl.query.filter_by(def_control_id=def_control_id).first()
         if control:
             db.session.delete(control)

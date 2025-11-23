@@ -79,7 +79,6 @@ def create_access_point():
 
 @access_points_bp.route("/def_access_points", methods=["GET"])
 @jwt_required()
-@role_required()
 def get_access_points():
     try:
         def_access_point_id = request.args.get("def_access_point_id", type=int)
@@ -276,6 +275,5 @@ def delete_access_point():
             "message": "Error deleting access point",
             "error": str(e)
         }), 500)
-
 
 

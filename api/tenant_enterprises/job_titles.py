@@ -172,4 +172,3 @@ def delete_job_title():
             "error": str(e)
         }), 500)
 
-

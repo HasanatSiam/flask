@@ -8,11 +8,11 @@ from executors.models import (
     DefGlobalConditionLogicAttribute
 )
 
-from . import glob_conditions_bp
+from . import global_conditions_bp
 
 
 # def_global_condition_logics_attributes
-@glob_conditions_bp.route('/def_global_condition_logic_attributes', methods=['POST'])
+@global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['POST'])
 @jwt_required()
 def create_def_global_condition_logic_attribute():
     try:
@@ -69,29 +69,40 @@ def create_def_global_condition_logic_attribute():
 
 
 
-@glob_conditions_bp.route('/def_global_condition_logic_attributes', methods=['GET'])
+@global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['GET'])
 @jwt_required()
-def get_all_def_global_condition_logic_attributes():
+def get_def_global_condition_logic_attributes():
     try:
-        attributes = DefGlobalConditionLogicAttribute.query.order_by(DefGlobalConditionLogicAttribute.id.desc()).all()
-        return make_response(jsonify([attribute.json() for attribute in attributes]), 200)
+        id = request.args.get('id', type=int)
+
+        # Case 1: Get single attribute by ID
+        if id:
+            attribute = DefGlobalConditionLogicAttribute.query.filter_by(id=id).first()
+            if attribute:
+                return make_response(jsonify({"result": attribute.json()}), 200)
+            return make_response(jsonify({
+                "message": "Global Condition Logic Attribute not found"
+            }), 404)
+
+        # Case 2: Get all attributes
+        attributes = DefGlobalConditionLogicAttribute.query.order_by(
+            DefGlobalConditionLogicAttribute.id.desc()
+        ).all()
+
+        return make_response(jsonify({
+            "result": [attribute.json() for attribute in attributes]
+        }), 200)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving condition logic attributes", "error": str(e)}), 500)
+        return make_response(jsonify({
+            "message": "Error retrieving condition logic attributes",
+            "error": str(e)
+        }), 500)
+   
 
 
-@glob_conditions_bp.route('/def_global_condition_logic_attributes/<int:id>', methods=['GET'])
-@jwt_required()
-def get_def_global_condition_logic_attribute(id):
-    try:
-        attribute = DefGlobalConditionLogicAttribute.query.filter_by(id=id).first()
-        if attribute:
-            return make_response(jsonify(attribute.json()), 200)
-        return make_response(jsonify({"message": "Global Condition Logic Attribute not found"}), 404)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving global condition logic attribute", "error": str(e)}), 500)
-    
 
-@glob_conditions_bp.route('/def_global_condition_logic_attributes/<int:page>/<int:limit>', methods=['GET'])
+@global_conditions_bp.route('/def_global_condition_logic_attributes/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
 def get_paginated_def_global_condition_logic_attributes(page, limit):
     try:
@@ -112,7 +123,7 @@ def get_paginated_def_global_condition_logic_attributes(page, limit):
         }), 500)
 
 
-@glob_conditions_bp.route('/def_global_condition_logic_attributes/upsert', methods=['POST'])
+@global_conditions_bp.route('/def_global_condition_logic_attributes/upsert', methods=['POST'])
 @jwt_required()
 def upsert_def_global_condition_logic_attributes():
     try:
@@ -220,10 +231,13 @@ def upsert_def_global_condition_logic_attributes():
         }), 500)
 
 
-@glob_conditions_bp.route('/def_global_condition_logic_attributes/<int:id>', methods=['PUT'])
+@global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['PUT'])
 @jwt_required()
-def update_def_global_condition_logic_attribute(id):
+def update_def_global_condition_logic_attribute():
     try:
+        id = request.args.get('id', type=int)
+        if not id:
+            return make_response(jsonify({'message': 'id query parameter is required'}), 400)
         data = request.get_json()
         attribute = DefGlobalConditionLogicAttribute.query.filter_by(id=id).first()
 
@@ -250,10 +264,13 @@ def update_def_global_condition_logic_attribute(id):
 
 
 
-@glob_conditions_bp.route('/def_global_condition_logic_attributes/<int:id>', methods=['DELETE'])
+@global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['DELETE'])
 @jwt_required()
-def delete_def_global_condition_logic_attribute(id):
+def delete_def_global_condition_logic_attribute():
     try:
+        id = request.args.get('id', type=int)
+        if not id:
+            return make_response(jsonify({'message': 'id query parameter is required'}), 400)
         attribute = DefGlobalConditionLogicAttribute.query.filter_by(id=id).first()
 
         if not attribute:
@@ -270,6 +287,7 @@ def delete_def_global_condition_logic_attribute(id):
             'message': 'Error deleting Global Condition Logic Attribute',
             'error': str(e)
         }), 500)
+
 
 
 

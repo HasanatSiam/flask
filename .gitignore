@@ -1,0 +1,11 @@
+procg_venv
+__pycache__
+ad_hoc/__pycache__
+executors/__pycache__
+redbeat_s/__pycache__
+.env
+*.pyc
+celery_beat.log
+celery_worker.log
+gunicorn.log
+commands.txt

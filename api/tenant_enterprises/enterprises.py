@@ -44,12 +44,15 @@ def create_enterprise(tenant_id):
         return make_response(jsonify({"message": "Failed to add enterprise setup.", "error": str(e)}), 500)
 
 # Create or update enterprise setup
-@tenant_enterprise_bp.route('/create_enterprise/<int:tenant_id>', methods=['POST'])
+@tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['POST'])
 @jwt_required()
-def create_update_enterprise(tenant_id):
+def create_update_enterprise():
     try:
+        tenant_id = request.args.get('tenant_id', type=int)
+        if not tenant_id:
+            return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
+
         data = request.get_json()
-        tenant_id       = tenant_id
         enterprise_name = data['enterprise_name']
         enterprise_type = data['enterprise_type']
         user_invitation_validity = data.get('user_invitation_validity', "1h")
@@ -122,16 +125,32 @@ def get_enterprises_v1():
 
 
 # Get one enterprise setup by tenant_id
-@tenant_enterprise_bp.route('/get_enterprise/<int:tenant_id>', methods=['GET'])
+@tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['GET'])
 @jwt_required()
-def get_enterprise(tenant_id):
+def get_enterprise():
     try:
+        tenant_id = request.args.get('tenant_id', type=int)
+        if not tenant_id:
+            return make_response(jsonify({
+                "message": "tenant_id query parameter is required"
+            }), 400)
+
         setup = DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).first()
+
         if setup:
-            return make_response(jsonify(setup.json()), 200)
-        return make_response(jsonify({"message": "Enterprise setup not found"}), 404)
+            return make_response(jsonify({
+                "result": setup.json()
+            }), 200)
+
+        return make_response(jsonify({
+            "message": "Enterprise setup not found"
+        }), 404)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving enterprise setup", "error": str(e)}), 500)
+        return make_response(jsonify({
+            "message": "Error retrieving enterprise setup",
+            "error": str(e)
+        }), 500)
 
 
 @tenant_enterprise_bp.route('/def_tenant_enterprise_setup/<int:page>/<int:limit>', methods=['GET'])
@@ -170,10 +189,14 @@ def update_enterprise(tenant_id):
 
 
 # Delete enterprise setup
-@tenant_enterprise_bp.route('/delete_enterprise/<int:tenant_id>', methods=['DELETE'])
+@tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['DELETE'])
 @jwt_required()
-def delete_enterprise(tenant_id):
+def delete_enterprise():
     try:
+        tenant_id = request.args.get('tenant_id', type=int)
+        if not tenant_id:
+            return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
+
         setup = DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).first()
         if setup:
             db.session.delete(setup)
@@ -239,4 +262,5 @@ def search_enterprises(page, limit):
         }), 200)
     except Exception as e:
         return make_response(jsonify({"message": "Error searching enterprises", "error": str(e)}), 500)
+
 
