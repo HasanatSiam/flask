@@ -7,7 +7,7 @@ import os                        # Import os for environment variable handling
 from dotenv import load_dotenv   # Import load_dotenv to load environment variables from a .env file
 import ssl
 from datetime import timedelta
-
+from flask_mail import Mail  # Import Flask-Mail for email functionalities
 
 # Load environment variables from the .env file
 load_dotenv()  # This loads the variables defined in the .env file into the environment
@@ -22,11 +22,16 @@ load_dotenv()  # This loads the variables defined in the .env file into the envi
 # else:
 #     print(f"Error: The .env file was not found at {ENV_PATH}")
 
+# Initialize Flask-Mail globally
+mail = Mail()
 
 # Fetch Redis and database URLs from environment variables
 redis_url = os.environ.get("MESSAGE_BROKER")         # Redis URL for Celery's message broker
 database_url = os.environ.get("DATABASE_URL")   # PostgreSQL URL for Celery's result backend
 FLOWER_URL = os.environ.get("FLOWER_URL")
+crypto_secret_key = os.getenv("CRYPTO_SECRET_KEY")
+jwt_secret_key = os.getenv("JWT_SECRET_ACCESS_TOKEN")
+invitation_expire_time = int(os.getenv("INV_EXPIRE_TIME", 1))  # in days
 
 def parse_expiry(value):
     try:
@@ -111,7 +116,18 @@ def create_app() -> Flask:
         JWT_SECRET_KEY = os.getenv('JWT_SECRET_ACCESS_TOKEN'),
         JWT_ACCESS_TOKEN_EXPIRES = parse_expiry(os.getenv('ACCESS_TOKEN_EXPIRED_TIME', '15m')),
         JWT_REFRESH_TOKEN_EXPIRES = parse_expiry(os.getenv('REFRESH_TOKEN_EXPIRED_TIME', '30d')),
-        FLOWER_URL = FLOWER_URL
+        FLOWER_URL = FLOWER_URL,
+
+        INV_EXPIRE_TIME = invitation_expire_time,
+        CRYPTO_SECRET_KEY = crypto_secret_key,
+
+        # --- Flask-Mail Config ---
+        MAIL_SERVER=os.getenv("MAIL_SERVER"),
+        MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
+        MAIL_USE_TLS=os.getenv("MAIL_USE_TLS", "True").lower() == "true",
+        MAIL_USERNAME=os.getenv("EMAIL_USER"),
+        MAIL_PASSWORD=os.getenv("EMAIL_PASS"),
+        MAIL_DEFAULT_SENDER=("PROCG Team", os.getenv("EMAIL_USER"))
 
     )
     # Load additional configuration from environment variables with a prefix
@@ -120,5 +136,8 @@ def create_app() -> Flask:
     # Initialize Celery with the Flask app
     celery_init_app(app)
     
+    # Initialize Flask-Mail
+    mail.init_app(app)
+
     # Return the fully configured Flask app
     return app

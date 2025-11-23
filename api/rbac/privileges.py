@@ -14,7 +14,6 @@ from utils.auth import role_required
 from . import rbac_bp
 
 
-
 @rbac_bp.route('/def_privileges', methods=['GET'])
 @jwt_required()
 def get_def_privileges():

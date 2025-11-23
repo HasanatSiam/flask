@@ -6,15 +6,14 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from executors.extensions import db
 from executors.models import (
-
     DefGlobalCondition,
     DefGlobalConditionLogic
 )
 
-from . import glob_conditions_bp
+from . import global_conditions_bp
 
 # def_global_conditions
-@glob_conditions_bp.route('/def_global_conditions', methods=['POST'])
+@global_conditions_bp.route('/def_global_conditions', methods=['POST'])
 @jwt_required()
 def create_def_global_condition():
     try:
@@ -41,86 +40,71 @@ def create_def_global_condition():
     except Exception as e:
         return make_response(jsonify({"message": f"Error: {str(e)}"}), 500)
 
-@glob_conditions_bp.route('/def_global_conditions', methods=['GET'])
+@global_conditions_bp.route('/def_global_conditions', methods=['GET'])
 @jwt_required()
 def get_def_global_conditions():
     try:
-        conditions = DefGlobalCondition.query.order_by(DefGlobalCondition.def_global_condition_id.desc()).all()
-        return make_response(jsonify([condition.json() for condition in conditions]), 200)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving GlobalConditions", "error": str(e)}), 500)
+        # Query parameters
+        def_global_condition_id = request.args.get('def_global_condition_id', type=int)
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+        name = request.args.get('name', '').strip()
 
+        # Case 1: Get Single Condition by ID
+        if def_global_condition_id:
+            condition = DefGlobalCondition.query.filter_by(def_global_condition_id=def_global_condition_id).first()
+            if condition:
+                return make_response(jsonify({"result": condition.json()}), 200)
+            return make_response(jsonify({"message": "Global condition not found"}), 404)
 
-@glob_conditions_bp.route('/def_global_conditions/search/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def search_def_global_conditions(page, limit):
-    try:
-        search_query = request.args.get('name', '').strip()
-        search_underscore = search_query.replace(' ', '_')
-        search_space = search_query.replace('_', ' ')
+        # Base Query
         query = DefGlobalCondition.query
 
-        if search_query:
+        # Case 2: Search by name
+        if name:
+            search_underscore = name.replace(' ', '_')
+            search_space = name.replace('_', ' ')
             query = query.filter(
                 or_(
-                    DefGlobalCondition.name.ilike(f'%{search_query}%'),
+                    DefGlobalCondition.name.ilike(f'%{name}%'),
                     DefGlobalCondition.name.ilike(f'%{search_underscore}%'),
                     DefGlobalCondition.name.ilike(f'%{search_space}%')
                 )
             )
 
-        paginated = query.order_by(DefGlobalCondition.def_global_condition_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+        # Order by ID descending
+        query = query.order_by(DefGlobalCondition.def_global_condition_id.desc())
 
+        # Case 3: Pagination
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [item.json() for item in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        # Case 4: Get All (No pagination, no ID)
+        conditions = query.all()
         return make_response(jsonify({
-            "items": [item.json() for item in paginated.items],
-            "total": paginated.total,
-            "pages": 1 if paginated.total == 0 else paginated.pages,
-            "page":  paginated.page
-        }), 200)
-    except Exception as e:
-        return make_response(jsonify({
-            "message": "Error searching Global Conditions",
-            "error": str(e)
-        }), 500)
-
-
-@glob_conditions_bp.route('/def_global_conditions/<int:def_global_condition_id>', methods=['GET'])
-@jwt_required()
-def get_def_global_condition(def_global_condition_id):
-    try:
-        condition = DefGlobalCondition.query.filter_by(def_global_condition_id=def_global_condition_id).first()
-        if condition:
-            return make_response(jsonify(condition.json()), 200)
-        return make_response(jsonify({"message": "Global condition not found"}), 404)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving Global Condition", "error": str(e)}), 500)
-
-
-@glob_conditions_bp.route('/def_global_conditions/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def get_paginated_def_global_conditions(page, limit):
-    try:
-        query = DefGlobalCondition.query.order_by(DefGlobalCondition.def_global_condition_id.desc())
-        paginated = query.paginate(page=page, per_page=limit, error_out=False)
-
-        return make_response(jsonify({
-            "items": [item.json() for item in paginated.items],
-            "total": paginated.total,
-            "pages": paginated.pages,
-            "page": paginated.page
+            "result": [condition.json() for condition in conditions]
         }), 200)
 
     except Exception as e:
         return make_response(jsonify({
-            "message": "Error retrieving Global Conditions",
+            "message": "Error retrieving GlobalConditions",
             "error": str(e)
         }), 500)
 
 
-@glob_conditions_bp.route('/def_global_conditions/<int:def_global_condition_id>', methods=['PUT'])
+@global_conditions_bp.route('/def_global_conditions', methods=['PUT'])
 @jwt_required()
-def update_def_global_condition(def_global_condition_id):
+def update_def_global_condition():
     try:
+        def_global_condition_id = request.args.get('def_global_condition_id', type=int)
+        if not def_global_condition_id:
+            return make_response(jsonify({'message': 'def_global_condition_id query parameter is required'}), 400)
         condition = DefGlobalCondition.query.filter_by(def_global_condition_id=def_global_condition_id).first()
         if condition:
             condition.name        = request.json.get('name', condition.name)
@@ -136,10 +120,13 @@ def update_def_global_condition(def_global_condition_id):
     except Exception as e:
         return make_response(jsonify({'message': 'Error editing Global Condition', 'error': str(e)}), 500)
 
-@glob_conditions_bp.route('/def_global_conditions/<int:def_global_condition_id>', methods=['DELETE'])
+@global_conditions_bp.route('/def_global_conditions', methods=['DELETE'])
 @jwt_required()
-def delete_def_global_condition(def_global_condition_id):
+def delete_def_global_condition():
     try:
+        def_global_condition_id = request.args.get('def_global_condition_id', type=int)
+        if not def_global_condition_id:
+            return make_response(jsonify({'message': 'def_global_condition_id query parameter is required'}), 400)
         condition = DefGlobalCondition.query.filter_by(def_global_condition_id=def_global_condition_id).first()
         if condition:
             db.session.delete(condition)
@@ -151,7 +138,7 @@ def delete_def_global_condition(def_global_condition_id):
 
 
 
-@glob_conditions_bp.route('/def_global_conditions/cascade', methods=['DELETE'])
+@global_conditions_bp.route('/def_global_conditions/cascade', methods=['DELETE'])
 @jwt_required()
 def cascade_delete_global_condition():
     try:

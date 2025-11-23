@@ -1383,3 +1383,32 @@ class DefApiEndpointRole(db.Model):
             'last_update_date': self.last_update_date
         }
 
+
+class ForgotPasswordRequest(db.Model):
+    __tablename__ = "forgot_password_requests"
+    __table_args__ = {"schema": "apps"}
+
+    request_id = db.Column(db.Integer, primary_key=True, nullable=False)
+    request_by = db.Column(db.Integer)
+    email = db.Column(db.Text)
+    temporary_password = db.Column(db.Integer)
+    access_token = db.Column(db.Text)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_updated_by = db.Column(db.Integer, nullable=True)
+    last_updated_date = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    is_valid = db.Column(db.Boolean, nullable=True)
+
+    def json(self):
+        return {
+            "request_id": self.request_id,
+            "request_by": self.request_by,
+            "email": self.email,
+            "temporary_password": self.temporary_password,
+            "access_token": self.access_token,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date.isoformat() if self.creation_date else None,
+            "last_updated_by": self.last_updated_by,
+            "last_updated_date": self.last_updated_date.isoformat() if self.last_updated_date else None,
+            "is_valid": self.is_valid,
+        }

@@ -36,15 +36,6 @@ logging.basicConfig(level=logging.INFO)
 
 
 
-
-serializer = URLSafeTimedSerializer(
-    flask_app.config["JWT_SECRET_KEY"],
-    salt="invite-link"
-)
-
-
-
-
 # Register blueprints
 register_blueprints(flask_app)
 

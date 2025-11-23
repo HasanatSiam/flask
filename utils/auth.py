@@ -2,6 +2,9 @@
 from flask_jwt_extended import get_jwt_identity
 from functools import wraps
 from flask import request, jsonify, make_response 
+import hashlib
+from Crypto.Cipher import AES
+import base64
 
 
 
@@ -97,4 +100,67 @@ def role_required():
 
         return wrapper
     return decorator
+
+
+
+def encrypt(value, passphrase):
+    value_bytes = value.encode("utf-8")
+    passphrase = passphrase.encode("utf-8")
+
+    salt = b"12345678"  # fixed salt for frontend decryption
+
+    def evp_bytes_to_key(password, salt, key_len=32, iv_len=16):
+        dt = b""
+        derived = b""
+        while len(derived) < key_len + iv_len:
+            dt = hashlib.md5(dt + password + salt).digest()
+            derived += dt
+        return derived[:key_len], derived[key_len:key_len + iv_len]
+
+    key, iv = evp_bytes_to_key(passphrase, salt)
+
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+
+    pad_len = 16 - (len(value_bytes) % 16)
+    padded = value_bytes + bytes([pad_len]) * pad_len
+
+    encrypted = cipher.encrypt(padded)
+    openssl_bytes = b"Salted__" + salt + encrypted
+
+    return base64.urlsafe_b64encode(openssl_bytes).decode()
+
+def decrypt(encrypted_value, passphrase):
+    # URL-decode and Base64-decode
+    encrypted_bytes = base64.urlsafe_b64decode(encrypted_value)
+    
+    if encrypted_bytes[:8] != b"Salted__":
+        raise ValueError("Invalid encrypted data")
+    
+    salt = encrypted_bytes[8:16]  # should match the salt used in encrypt()
+    encrypted_data = encrypted_bytes[16:]
+
+    passphrase = passphrase.encode("utf-8")
+
+    # Key derivation (same as in encrypt)
+    def evp_bytes_to_key(password, salt, key_len=32, iv_len=16):
+        dt = b""
+        derived = b""
+        while len(derived) < key_len + iv_len:
+            dt = hashlib.md5(dt + password + salt).digest()
+            derived += dt
+        return derived[:key_len], derived[key_len:key_len + iv_len]
+
+    key, iv = evp_bytes_to_key(passphrase, salt)
+
+    # AES decryption
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    decrypted_padded = cipher.decrypt(encrypted_data)
+
+    # Remove PKCS#7 padding
+    pad_len = decrypted_padded[-1]
+    if pad_len < 1 or pad_len > 16:
+        raise ValueError("Invalid padding")
+    decrypted = decrypted_padded[:-pad_len]
+
+    return decrypted.decode("utf-8")
 
