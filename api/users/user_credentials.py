@@ -1,11 +1,11 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, decode_token
 from sqlalchemy import or_, func
 from datetime import datetime, timedelta
 from flask_mail import Message as MailMessage
-from utils.auth import encrypt, decrypt, decode_token
+from utils.auth import encrypt, decrypt
 import random
 from config import crypto_secret_key, invitation_expire_time, mail
 from utils.auth import role_required

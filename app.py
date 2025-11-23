@@ -7,7 +7,6 @@ from flask_jwt_extended import JWTManager
 
 from flask_cors import CORS 
 from config import redis_url
-from itsdangerous import URLSafeTimedSerializer
 # from executors.extensions import db
 
 # db.init_app(flask_app)
