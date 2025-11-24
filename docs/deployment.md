@@ -4,7 +4,7 @@ This guide outlines the recommended steps for deploying the **ProcG Blueprint** 
 
 ## Production Requirements
 
--   **WSGI Server**: Do not use the built-in Flask development server. Use a production-grade WSGI server like **Gunicorn**.
+-   **WSGI Server**: Do not use the built-in Flask development server. Use **Gunicorn**.
 -   **Reverse Proxy**: Use **Nginx** or **Apache** as a reverse proxy to handle static files, SSL termination, and request buffering.
 -   **Process Manager**: Use **Supervisor** or **Systemd** to keep your application and Celery workers running.
 
