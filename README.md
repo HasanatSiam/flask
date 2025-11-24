@@ -1,16 +1,12 @@
-<h1 align="center">PROCG Enterprise Backend</h1>
+# PROCG Enterprise Backend
 
-<p align="center">
-  The backend repository for the PROCG web application.
-</p>
+The backend repository for the PROCG web application.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.8%2B-blue" alt="Python">
-  <img src="https://img.shields.io/badge/Flask-2.0%2B-green" alt="Flask">
-  <img src="https://img.shields.io/badge/PostgreSQL-13%2B-blue" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Redis-6%2B-red" alt="Redis">
-  <img src="https://img.shields.io/badge/Celery-5%2B-green" alt="Celery">
-</p>
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![Flask](https://img.shields.io/badge/Flask-2.0%2B-green)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13%2B-blue)
+![Redis](https://img.shields.io/badge/Redis-6%2B-red)
+![Celery](https://img.shields.io/badge/Celery-5%2B-green)
 
 ## Features
 
