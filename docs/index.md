@@ -9,7 +9,6 @@ Welcome to the documentation for the **ProcG Blueprint** project. This documenta
 - **[API Reference](api/overview.md)**: Detailed documentation of the API endpoints, authentication, and response formats.
     - [API Overview](api/overview.md)
     - [Module Reference](api/modules.md)
-- **[Deployment](deployment.md)**: Guidelines for deploying the application to a production environment.
 
 ## Quick Links
 
