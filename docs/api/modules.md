@@ -104,6 +104,7 @@ This document provides a detailed reference for the API modules.
 ## Aggregation
 
 -   **POST** `/aggregation/create_aggregate_table`: Create an aggregation table.
+-   **POST** `/aggregation/create_mv`: Create a materialized view.
 ---
 
 ## Access Models
