@@ -15,6 +15,11 @@ The backend repository for the PROCG web application.
 - **Async Processing**: Celery and Redis for background and scheduled tasks.
 - **Data Management**: PostgreSQL with SQLAlchemy.
 
+## Documentation
+
+For full documentation, including architecture details and API reference, please visit the **[Documentation Hub](docs/index.md)**.
+
+
 ## Tech Stack
 
 - **Framework**: Flask
