@@ -122,26 +122,54 @@ def register_user():
         db.session.rollback()
         return jsonify({"message": "Registration failed", "error": str(e)}), 500
 
+
+
 @users_bp.route('/users', methods=['GET'])
 @jwt_required()
-def defusers():
+def get_users_unified():
     try:
-        defusers = DefUsersView.query.order_by(DefUsersView.user_id.desc()).all()
-        return make_response(jsonify([defuser.json() for defuser in defusers]), 200)
+        # Check for specific user ID
+        user_id = request.args.get('user_id', type=int)
+        if user_id:
+            user = DefUsersView.query.filter_by(user_id=user_id).first()
+            if user:
+                return make_response(jsonify({"result" : [user.json()]}), 200)
+            return make_response(jsonify({'message': 'User not found'}), 404)
+
+        # Base query
+        query = DefUsersView.query
+
+        # Search filter
+        user_name = request.args.get('user_name', '').strip()
+        if user_name:
+            query = query.filter(DefUsersView.user_name.ilike(f'%{user_name}%'))
+
+        # Ordering
+        query = query.order_by(DefUsersView.user_id.desc())
+
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [user.json() for user in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+        
+        # Return all if no pagination
+        users = query.all()
+        return make_response(jsonify({"result": [user.json() for user in users]}), 200)
+
     except Exception as e:
-        return make_response(jsonify({'message': 'Error getting users', 'error': str(e)}), 500)
+        return make_response(jsonify({'message': 'Error fetching users', 'error': str(e)}), 500)
+
+
     
-    
-@users_bp.route('/users/<int:user_id>', methods=['GET'])
-@jwt_required()
-def get_specific_user(user_id):
-    try:
-        user = DefUsersView.query.filter_by(user_id=user_id).first()
-        if user:
-            return make_response(jsonify(user.json()), 200)
-        return make_response(jsonify({'message': 'User not found'}), 404)
-    except Exception as e:
-        return make_response(jsonify({'message': 'Error getting User', 'error': str(e)}), 500)  
+
     
 
 @users_bp.route('/users/<int:user_id>', methods=['PUT'])
