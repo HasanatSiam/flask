@@ -1,6 +1,6 @@
 # Architecture Overview
 
-The **ProcG Blueprint** is a modular web application built with **Flask**, designed for scalability and maintainability. It leverages a micro-service-like architecture within a monolith using Flask Blueprints.
+The **Flask** is a modular web application built with **Flask**, designed for scalability and maintainability. It leverages a micro-service-like architecture within a monolith using Flask Blueprints.
 
 ## Core Technologies
 
@@ -16,7 +16,7 @@ The **ProcG Blueprint** is a modular web application built with **Flask**, desig
 The project follows a modular structure where each feature is encapsulated in its own directory within `api/`.
 
 ```
-x:\procg_blueprint\
+x:\flask\
 ├── api/                # Contains all API modules (Blueprints)
 │   ├── users/          # User management
 │   ├── rbac/           # Role-Based Access Control
