@@ -1,6 +1,6 @@
 # API Overview
 
-The **ProcG Blueprint** API is a RESTful API that uses JSON for data exchange.
+The **Flask** API is a RESTful API that uses JSON for data exchange.
 
 ## Base URL
 

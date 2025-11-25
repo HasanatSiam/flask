@@ -16,8 +16,8 @@ Before you begin, ensure you have the following installed:
 1.  **Clone the repository:**
 
     ```bash
-    git clone https://github.com/HasanatSiam/procg_blueprint.git
-    cd procg_blueprint
+    git clone https://github.com/HasanatSiam/flask.git
+    cd flask
     ```
 
 2.  **Create a virtual environment:**
