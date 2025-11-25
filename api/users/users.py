@@ -133,7 +133,7 @@ def get_users_unified():
         if user_id:
             user = DefUsersView.query.filter_by(user_id=user_id).first()
             if user:
-                return make_response(jsonify({"result" : [user.json()]}), 200)
+                return make_response(jsonify({"result" : user.json()}), 200)
             return make_response(jsonify({'message': 'User not found'}), 404)
 
         # Base query
