@@ -1,6 +1,6 @@
 # Project Documentation
 
-Welcome to the documentation for the **ProcG Blueprint** project. This documentation is designed to help you understand, install, and contribute to the project.
+Welcome to the documentation for the **PROCG Blueprint** project. This documentation is designed to help you understand, install, and contribute to the project.
 
 ## Table of Contents
 

@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you set up the **ProcG Blueprint** project on your local machine for development and testing.
+This guide will help you set up the **PROCG Blueprint** project on your local machine for development and testing.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Before you begin, ensure you have the following installed:
 1.  **Clone the repository:**
 
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/HasanatSiam/procg_blueprint.git
     cd procg_blueprint
     ```
 
