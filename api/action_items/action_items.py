@@ -16,6 +16,82 @@ from . import action_items_bp
 
 
 # Create a DefActionItem
+
+
+
+# Get all DefActionItems (Consolidated Endpoint)
+@action_items_bp.route('/def_action_items', methods=['GET'])
+@jwt_required()
+def get_action_items():
+    try:
+        # Query Parameters
+        action_item_id = request.args.get('action_item_id', type=int)
+        user_id = request.args.get('user_id', type=int)
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+        status = request.args.get('status')
+        action_item_name = request.args.get('action_item_name', '').strip()
+
+        # 1. Single Item by ID
+        if action_item_id:
+            action_item = DefActionItem.query.filter_by(action_item_id=action_item_id).first()
+            if action_item:
+                return make_response(jsonify({"result": action_item.json()}), 200)
+            else:
+                return make_response(jsonify({"message": "Action item not found"}), 404)
+
+        # 2. List Items (User View or Admin/General View)
+        if user_id:
+            # User View: Filter by user_id and notification_status='sent'
+            query = DefActionItemsV.query.filter_by(user_id=user_id).filter(
+                func.lower(func.trim(DefActionItemsV.notification_status)) == "sent"
+            )
+            
+            # Additional filters for User View
+            if status:
+                query = query.filter(
+                    func.lower(func.trim(DefActionItemsV.status)) == func.lower(func.trim(status))
+                )
+
+            if action_item_name:
+                search_underscore = action_item_name.replace(' ', '_')
+                search_space = action_item_name.replace('_', ' ')
+                query = query.filter(
+                    or_(
+                        DefActionItemsV.action_item_name.ilike(f'%{action_item_name}%'),
+                        DefActionItemsV.action_item_name.ilike(f'%{search_underscore}%'),
+                        DefActionItemsV.action_item_name.ilike(f'%{search_space}%')
+                    )
+                )
+            
+            query = query.order_by(DefActionItemsV.action_item_id.desc())
+            
+        else:
+            # General View (Admin or all items)
+            query = DefActionItemsV.query.order_by(DefActionItemsV.action_item_id.desc())
+
+        # 3. Pagination
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [item.json() for item in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        # 4. Return All (No Pagination)
+        items = query.all()
+        return make_response(jsonify({
+            "result": [item.json() for item in items]
+        }), 200)
+
+    except Exception as e:
+        return make_response(jsonify({"message": "Error retrieving action items", "error": str(e)}), 500)
+
+
+
+
 @action_items_bp.route('/def_action_items', methods=['POST'])
 @jwt_required()
 def create_action_item():
@@ -95,82 +171,6 @@ def create_action_item():
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({"message": "Error creating action item", "error": str(e)}), 500)
-
-
-
-
-# Get all DefActionItems (Consolidated Endpoint)
-@action_items_bp.route('/def_action_items', methods=['GET'])
-@jwt_required()
-def get_action_items():
-    try:
-        # Query Parameters
-        action_item_id = request.args.get('action_item_id', type=int)
-        user_id = request.args.get('user_id', type=int)
-        page = request.args.get('page', type=int)
-        limit = request.args.get('limit', type=int)
-        status = request.args.get('status')
-        action_item_name = request.args.get('action_item_name', '').strip()
-
-        # 1. Single Item by ID
-        if action_item_id:
-            action_item = DefActionItem.query.filter_by(action_item_id=action_item_id).first()
-            if action_item:
-                return make_response(jsonify({"result": action_item.json()}), 200)
-            else:
-                return make_response(jsonify({"message": "Action item not found"}), 404)
-
-        # 2. List Items (User View or Admin/General View)
-        if user_id:
-            # User View: Filter by user_id and notification_status='sent'
-            query = DefActionItemsV.query.filter_by(user_id=user_id).filter(
-                func.lower(func.trim(DefActionItemsV.notification_status)) == "sent"
-            )
-            
-            # Additional filters for User View
-            if status:
-                query = query.filter(
-                    func.lower(func.trim(DefActionItemsV.status)) == func.lower(func.trim(status))
-                )
-
-            if action_item_name:
-                search_underscore = action_item_name.replace(' ', '_')
-                search_space = action_item_name.replace('_', ' ')
-                query = query.filter(
-                    or_(
-                        DefActionItemsV.action_item_name.ilike(f'%{action_item_name}%'),
-                        DefActionItemsV.action_item_name.ilike(f'%{search_underscore}%'),
-                        DefActionItemsV.action_item_name.ilike(f'%{search_space}%')
-                    )
-                )
-            
-            query = query.order_by(DefActionItemsV.action_item_id.desc())
-            
-        else:
-            # General View (Admin or all items)
-            query = DefActionItemsV.query.order_by(DefActionItemsV.action_item_id.desc())
-
-        # 3. Pagination
-        if page and limit:
-            paginated = query.paginate(page=page, per_page=limit, error_out=False)
-            return make_response(jsonify({
-                "result": [item.json() for item in paginated.items],
-                "total": paginated.total,
-                "pages": paginated.pages,
-                "page": paginated.page
-            }), 200)
-
-        # 4. Return All (No Pagination)
-        items = query.all()
-        return make_response(jsonify({
-            "result": [item.json() for item in items]
-        }), 200)
-
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving action items", "error": str(e)}), 500)
-
-
-
 
 
 
@@ -386,6 +386,64 @@ def delete_action_item(action_item_id):
 
 
 
+
+
+
+
+@action_items_bp.route('/def_action_items', methods=['DELETE'])
+@jwt_required()
+def delete_multiple_action_items():
+    try:
+        data = request.get_json()
+
+        if not data or "action_item_ids" not in data:
+            return make_response(jsonify({
+                "message": "JSON payload with 'action_item_ids' list is required"
+            }), 400)
+
+        action_item_ids = data.get("action_item_ids")
+
+        if not isinstance(action_item_ids, list) or not all(isinstance(i, int) for i in action_item_ids):
+            return make_response(jsonify({
+                "message": "'action_item_ids' must be a list of integers"
+            }), 400)
+
+        if not action_item_ids:
+            return make_response(jsonify({
+                "message": "The 'action_item_ids' list cannot be empty"
+            }), 400)
+
+        # 1. Delete assignments first (manual cascade)
+        DefActionItemAssignment.query.filter(
+            DefActionItemAssignment.action_item_id.in_(action_item_ids)
+        ).delete(synchronize_session=False)
+
+        # 2. Delete the main action items
+        deleted_count = DefActionItem.query.filter(
+            DefActionItem.action_item_id.in_(action_item_ids)
+        ).delete(synchronize_session=False)
+
+        if deleted_count == 0:
+            db.session.rollback()
+            return make_response(jsonify({
+                "message": "No action items found for the provided IDs"
+            }), 404)
+
+        db.session.commit()
+
+        return make_response(jsonify({
+            "message": "Deleted successfully",
+            "deleted_ids": action_item_ids
+        }), 200)
+
+    except Exception as e:
+        db.session.rollback()
+        return make_response(jsonify({
+            "message": "Error deleting action items",
+            "error": str(e)
+        }), 500)
+
+
 # Update DefActionItemAssignments (replace user_ids for given action_item_id)
 @action_items_bp.route('/def_action_items/update_status/<int:user_id>/<int:action_item_id>', methods=['PUT'])
 @jwt_required()
@@ -415,70 +473,4 @@ def update_action_item_assignment_status(user_id, action_item_id):
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({"message": "Error updating status", "error": str(e)}), 500)
-
-
-
-@action_items_bp.route('/def_action_items_view/<int:user_id>/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def get_paginated_action_items_view(user_id, page, limit):
-    try:
-        status = request.args.get('status')
-        action_item_name = request.args.get('action_item_name', '').strip()
-        search_underscore = action_item_name.replace(' ', '_')
-        search_space = action_item_name.replace('_', ' ')
-
-        # Validate pagination
-        if page < 1 or limit < 1:
-            return make_response(jsonify({
-                "message": "Page and limit must be positive integers"
-            }), 400)
-
-        # Base 
-        # query = DefActionItemsV.query.filter_by(user_id=user_id)
-
-        # Base query: filter by user_id and only SENT status
-        query = DefActionItemsV.query.filter_by(user_id=user_id).filter(
-            func.lower(func.trim(DefActionItemsV.notification_status)) == "sent"
-        )
-
-        #Apply status filter if provided
-        if status:
-            query = query.filter(
-                func.lower(func.trim(DefActionItemsV.status)) == func.lower(func.trim(status))
-            )
-
-        if action_item_name:
-            query = query.filter(
-                or_(
-                    DefActionItemsV.action_item_name.ilike(f'%{action_item_name}%'),
-                    DefActionItemsV.action_item_name.ilike(f'%{search_underscore}%'),
-                    DefActionItemsV.action_item_name.ilike(f'%{search_space}%')
-                )
-            )
-
-        query = query.order_by(DefActionItemsV.action_item_id.desc())
-
-        
-        # paginated
-        paginated = query.paginate(page=page, per_page=limit, error_out=False)
-        return make_response(jsonify({
-            "items": [item.json() for item in paginated.items],
-            "total": paginated.total,
-            "pages": paginated.pages,
-            "page": paginated.page
-        }), 200)
-
-        # Without pagination
-        
-        # items = query.all()
-        # return make_response(jsonify({
-        #     "items": [item.json() for item in items],
-        #     "total": len(items)
-        # }), 200)
-
-    except Exception as e:
-        return make_response(jsonify({
-            'message': 'Error fetching action items view',
-            'error': str(e)
-        }), 500)
 
