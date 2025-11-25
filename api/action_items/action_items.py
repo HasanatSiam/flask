@@ -270,10 +270,14 @@ def upsert_action_item():
 
 
 
-@action_items_bp.route('/def_action_items/<int:action_item_id>', methods=['PUT'])
+@action_items_bp.route('/def_action_items', methods=['PUT'])
 @jwt_required()
-def update_action_item(action_item_id):
+def update_action_item():
     try:
+        action_item_id = request.args.get('action_item_id', type=int)
+        if not action_item_id:
+            return make_response(jsonify({'message': 'action_item_id query parameter is required'}), 400)
+
         data = request.get_json()
         current_user = get_jwt_identity()
 
