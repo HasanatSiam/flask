@@ -35,7 +35,7 @@ def invitation_via_email():
             return jsonify({"message": "User with this email already exists"}), 200
 
         # Token expiration and generation
-        expires = timedelta(minutes=invitation_expire_time)
+        expires = invitation_expire_time
         token = create_access_token(identity=str(invited_by), expires_delta=expires)
         encrypted_token = encrypt(token, crypto_secret_key)
 
@@ -124,7 +124,7 @@ def invitation_via_link():
         if not invited_by:
             return jsonify({"error": "Inviter ID required"}), 400
 
-        expires = timedelta(hours=invitation_expire_time)
+        expires = invitation_expire_time
         token = create_access_token(identity=str(invited_by), expires_delta=expires)
         expires_at = datetime.utcnow() + expires
 
