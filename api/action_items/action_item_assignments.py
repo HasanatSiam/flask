@@ -10,11 +10,11 @@ from executors.models import (
     DefActionItemsV,
 
 )
-from . import access_items_bp
+from . import action_items_bp
 
 
 # Create DefActionItemAssignments (multiple user_ids)
-@access_items_bp.route('/def_action_item_assignments', methods=['POST'])
+@action_items_bp.route('/def_action_item_assignments', methods=['POST'])
 @jwt_required()
 def create_action_item_assignments():
     try:
@@ -54,7 +54,7 @@ def create_action_item_assignments():
 
 
 # Get all DefActionItemAssignments
-@access_items_bp.route('/def_action_item_assignments', methods=['GET'])
+@action_items_bp.route('/def_action_item_assignments', methods=['GET'])
 @jwt_required()
 def get_action_item_assignments():
     try:
@@ -71,7 +71,7 @@ def get_action_item_assignments():
 
 
 # Delete a single DefActionItemAssignment
-@access_items_bp.route('/def_action_item_assignments/<int:user_id>/<int:action_item_id>', methods=['DELETE'])
+@action_items_bp.route('/def_action_item_assignments/<int:user_id>/<int:action_item_id>', methods=['DELETE'])
 @jwt_required()
 def delete_action_item_assignment(action_item_id, user_id):
     try:

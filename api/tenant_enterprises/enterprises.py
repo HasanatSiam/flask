@@ -153,20 +153,7 @@ def get_enterprise():
         }), 500)
 
 
-@tenant_enterprise_bp.route('/def_tenant_enterprise_setup/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def get_paginated_enterprises(page, limit):
-    try:
-        query = db.session.query(DefTenantEnterpriseSetupV).order_by(DefTenantEnterpriseSetupV.tenant_id.desc())
-        paginated = query.paginate(page=page, per_page=limit, error_out=False)
-        return jsonify({
-            "items": [row.json() for row in paginated.items],
-            "total": paginated.total,
-            "pages": paginated.pages,
-            "page": paginated.page
-        }), 200
-    except Exception as e:
-        return jsonify({"message": "Error fetching enterprises", "error": str(e)}), 500
+
 
 # Update enterprise setup
 @tenant_enterprise_bp.route('/update_enterprise/<int:tenant_id>', methods=['PUT'])
@@ -212,55 +199,39 @@ def delete_enterprise():
 
 
 
-#get all tenants enterprise setups
-@tenant_enterprise_bp.route('/enterprises', methods=['GET'])
+@tenant_enterprise_bp.route('/def_tenant_enterprise_setup_v', methods=['GET'])
 @jwt_required()
-def enterprises():
+def get_tenant_enterprise_setup_v():
     try:
-        # results = db.session.query(DefTenantEnterpriseSetupV).all()
-        results = db.session.query(DefTenantEnterpriseSetupV).order_by(
-            DefTenantEnterpriseSetupV.tenant_id.desc()
-        ).all()
-        
-        if not results:
-            return jsonify({'data': [], 'message': 'No records found'}), 200
-
-        data = [row.json() for row in results]
-        
-        return jsonify(data), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-
-@tenant_enterprise_bp.route('/def_tenant_enterprise_setup/search/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def search_enterprises(page, limit):
-    try:
-        search_query = request.args.get('enterprise_name', '').strip().lower()
-        search_underscore = search_query.replace(' ', '_')
-        search_space = search_query.replace('_', ' ')
+        # Base query using the View model
         query = db.session.query(DefTenantEnterpriseSetupV)
 
-        if search_query:
-            query = query.filter(
-                or_(
-                    DefTenantEnterpriseSetupV.enterprise_name.ilike(f'%{search_query}%'),
-                    DefTenantEnterpriseSetupV.enterprise_name.ilike(f'%{search_underscore}%'),
-                    DefTenantEnterpriseSetupV.enterprise_name.ilike(f'%{search_space}%')
-                )
-            )
+        # Search filter
+        enterprise_name = request.args.get('enterprise_name', '').strip()
+        if enterprise_name:
+            query = query.filter(DefTenantEnterpriseSetupV.enterprise_name.ilike(f'%{enterprise_name}%'))
 
-        paginated = query.order_by(DefTenantEnterpriseSetupV.tenant_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+        # Ordering
+        query = query.order_by(DefTenantEnterpriseSetupV.tenant_id.desc())
 
-        return make_response(jsonify({
-            "items": [row.json() for row in paginated.items],
-            "total": paginated.total,
-            "pages": 1 if paginated.total == 0 else paginated.pages,
-            "page":  paginated.page
-        }), 200)
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [row.json() for row in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+        
+        # Return all if no pagination
+        results = query.all()
+        return make_response(jsonify({"result": [row.json() for row in results]}), 200)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error searching enterprises", "error": str(e)}), 500)
+        return make_response(jsonify({"message": "Error fetching enterprises", "error": str(e)}), 500)
 
 

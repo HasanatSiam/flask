@@ -41,6 +41,7 @@ def register_user():
             "thumbnail": "uploads/profiles/default/thumbnail.jpg"
         }
 
+
         # Check for existing user/email
         # if DefUser.query.filter_by(user_name=user_name).first():
         #     return jsonify({"message": "Username already exists"}), 409
