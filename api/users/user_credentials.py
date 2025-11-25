@@ -173,7 +173,7 @@ def create_request():
         # ------------------ JWT ------------------
         token = create_access_token(
         identity=str(user.user_id),   
-        expires_delta=timedelta(minutes=invitation_expire_time))
+        expires_delta=invitation_expire_time)
         encrypted_token = encrypt(token, crypto_secret_key)
 
         # ------------------ Create Forgot Password Request ------------------
