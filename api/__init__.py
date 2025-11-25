@@ -3,7 +3,7 @@ from .users import users_bp
 from api.rbac import rbac_bp
 from .access_models import access_models_bp
 from .access_points import access_points_bp
-from .action_items import access_items_bp
+from .action_items import action_items_bp
 from .asynchronous_task import async_task_bp
 from .global_conditions import global_conditions_bp
 from .tenant_enterprises import tenant_enterprise_bp
@@ -17,7 +17,7 @@ def register_blueprints(app):
     app.register_blueprint(rbac_bp)
     app.register_blueprint(access_models_bp)
     app.register_blueprint(access_points_bp)
-    app.register_blueprint(access_items_bp)
+    app.register_blueprint(action_items_bp)
     app.register_blueprint(async_task_bp)
     app.register_blueprint(global_conditions_bp)
     app.register_blueprint(tenant_enterprise_bp)

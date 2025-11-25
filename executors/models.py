@@ -120,13 +120,10 @@ class DefUser(db.Model):
     tenant_id          = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
     user_invitation_id = db.Column(db.Integer)
     date_of_birth      = db.Column(db.Date) 
-    profile_picture    = db.Column(
-    JSONB,
-    default=lambda: {
+    profile_picture    = db.Column(JSONB, default=lambda: {
         "original": "uploads/profiles/default/profile.jpg",
         "thumbnail": "uploads/profiles/default/thumbnail.jpg"
-    }
-)
+    })
 
     def json(self):
         return {
@@ -245,6 +242,8 @@ class DefUsersView(db.Model):
     tenant_id          = db.Column(db.Integer)
     user_invitation_id = db.Column(db.Integer)
     profile_picture    = db.Column(JSONB)
+    granted_roles      = db.Column(JSONB)
+
 
     def json(self):
         return {
@@ -263,7 +262,8 @@ class DefUsersView(db.Model):
             'last_update_date'  : self.last_update_date,
             'tenant_id'         : self.tenant_id,
             'user_invitation_id': self.user_invitation_id,
-            'profile_picture'   : self.profile_picture
+            'profile_picture'   : self.profile_picture,
+            'granted_roles'     : self.granted_roles
     }
         
         
