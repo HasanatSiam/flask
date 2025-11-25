@@ -46,7 +46,7 @@ def execute(self, *args, **kwargs):
             cursor.execute(call_query, param_values)
         else:
             call_query = f"CALL {stored_procedure_name}();"
-            cursor.execute(call_query)
+            cursor.execute(call_query, (None,))
 
         # If your procedure returns something, fetch it here (optional)
         output = None

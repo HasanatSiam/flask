@@ -25,7 +25,7 @@ def execute(self, *args, **kwargs):
     if not headers and method in ['POST', 'PUT']:
         headers = {'Content-Type': 'application/json'}
 
-    payload = kwargs  # Remaining kwargs are used as request body or query params
+    params = kwargs  # Use kwargs as script parameters
 
     # Log the request info for debugging
     # print(f"Executing HTTP task: {method} {url}")
@@ -36,16 +36,13 @@ def execute(self, *args, **kwargs):
         response = None
 
         if method == 'GET':
-            if payload:
-                response = requests.get(url, headers=headers, params=payload)
-            else:
-                response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, params=params)
         elif method == 'POST':
-            response = requests.post(url, headers=headers, json=payload)
+            response = requests.post(url, headers=headers, json=params)
         elif method == 'PUT':
-            response = requests.put(url, headers=headers, json=payload)
+            response = requests.put(url, headers=headers, json=params)
         elif method == 'DELETE':
-            response = requests.delete(url, headers=headers, json=payload)
+            response = requests.delete(url, headers=headers, json=params)
         else:
             return {"error": f"Unsupported HTTP method: {method}"}
 
@@ -66,7 +63,8 @@ def execute(self, *args, **kwargs):
             "schedule_type": schedule_type,
             "schedule": schedule,
             "args": args,
-            "kwargs": payload,
+            "kwargs": params,
+            "parameters": params,
             "url": url,
             "method": method,
             "status_code": response.status_code,
