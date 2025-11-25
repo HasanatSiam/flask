@@ -31,7 +31,7 @@ database_url = os.environ.get("DATABASE_URL")
 FLOWER_URL = os.environ.get("FLOWER_URL")
 crypto_secret_key = os.getenv("CRYPTO_SECRET_KEY")
 jwt_secret_key = os.getenv("JWT_SECRET_ACCESS_TOKEN")
-invitation_expire_time = parse_expiry(os.getenv("INVITATION_ACCESS_TOKEN_EXPIRED_TIME", '1h'))  
+ 
 
 def parse_expiry(value):
     try:
@@ -50,6 +50,7 @@ def parse_expiry(value):
         raise ValueError(f"Could not parse expiry value '{value}': {e}")
 
 
+invitation_expire_time = parse_expiry(os.getenv("INVITATION_ACCESS_TOKEN_EXPIRED_TIME", '1h')) 
 
 # Function to initialize and configure Celery with Flask
 def celery_init_app(app: Flask) -> Celery:
@@ -105,7 +106,7 @@ def create_app() -> Flask:
         JWT_REFRESH_TOKEN_EXPIRES = parse_expiry(os.getenv('REFRESH_TOKEN_EXPIRED_TIME', '30d')),
         FLOWER_URL = FLOWER_URL,
 
-        INV_EXPIRE_TIME = invitation_expire_time,
+        INV_EXPIRE_TIME = parse_expiry(os.getenv('INVITATION_ACCESS_TOKEN_EXPIRED_TIME', '1h')),
         CRYPTO_SECRET_KEY = crypto_secret_key,
 
         # --- Flask-Mail Config ---
