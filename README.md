@@ -41,7 +41,7 @@ Ensure you have the following installed:
 1.  **Clone the repository:**
     ```bash
     git clone <repository-url>
-    cd procg_blueprint
+    cd flask
     ```
 
 2.  **Create and activate a virtual environment:**
