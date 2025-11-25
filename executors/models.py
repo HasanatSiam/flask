@@ -1239,10 +1239,6 @@ class NewUserInvitation(db.Model):
 #----------------RBAC------------
 
 
-
-#----------------RBAC------------
-
-
 class DefPrivilege(db.Model):
     __tablename__ = 'def_privileges'
     __table_args__ = {'schema': 'apps'}
@@ -1288,8 +1284,9 @@ class DefUserGrantedPrivilege(db.Model):
 class DefRoles(db.Model):
     __tablename__ = 'def_roles'
     __table_args__ = {'schema': 'apps'}
-    user_id = db.Column(db.Integer, db.ForeignKey('apps.def_users.user_id'), primary_key=True)
-    privilege_id = db.Column(db.Integer, db.ForeignKey('apps.def_privileges.privilege_id'), primary_key=True)
+
+    role_id = db.Column(db.Integer, primary_key=True)
+    role_name = db.Column(db.String(150), nullable=False)
     created_by = db.Column(db.Integer)
     creation_date = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by = db.Column(db.Integer)
@@ -1297,15 +1294,13 @@ class DefRoles(db.Model):
 
     def json(self):
         return {
-            'user_id': self.user_id,
-            'privilege_id': self.privilege_id,
+            'role_id': self.role_id,
+            'role_name': self.role_name,
             'created_by': self.created_by,
             'creation_date': self.creation_date,
             'last_updated_by': self.last_updated_by,
             'last_update_date': self.last_update_date
         }
-
-
 
 
 class DefUserGrantedRole(db.Model):
