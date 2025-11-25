@@ -112,9 +112,9 @@ def create_app() -> Flask:
         MAIL_SERVER=os.getenv("MAIL_SERVER"),
         MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
         MAIL_USE_TLS=os.getenv("MAIL_USE_TLS", "True").lower() == "true",
-        MAIL_USERNAME=os.getenv("EMAIL_USER"),
-        MAIL_PASSWORD=os.getenv("EMAIL_PASS"),
-        MAIL_DEFAULT_SENDER=("PROCG Team", os.getenv("EMAIL_USER"))
+        MAIL_USERNAME=os.getenv("MAILER_USER"),
+        MAIL_PASSWORD=os.getenv("MAILER_PASS"),
+        MAIL_DEFAULT_SENDER=("PROCG Team", os.getenv("MAILER_USER"))
 
     )
     # Load additional configuration from environment variables with a prefix
