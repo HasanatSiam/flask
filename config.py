@@ -31,7 +31,7 @@ database_url = os.environ.get("DATABASE_URL")
 FLOWER_URL = os.environ.get("FLOWER_URL")
 crypto_secret_key = os.getenv("CRYPTO_SECRET_KEY")
 jwt_secret_key = os.getenv("JWT_SECRET_ACCESS_TOKEN")
-invitation_expire_time = int(os.getenv("INV_EXPIRE_TIME", 1))  # in days
+invitation_expire_time = parse_expiry(os.getenv("INVITATION_ACCESS_TOKEN_EXPIRED_TIME", '1h'))  
 
 def parse_expiry(value):
     try:
