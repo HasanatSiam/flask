@@ -24,6 +24,10 @@ def get_user_granted_roles_privileges():
 
         if user_id:
             query = query.filter_by(user_id=user_id)
+            result = query.first()
+            return make_response(jsonify({
+                "result": result.json() if result else {}
+            }), 200)
 
         # Pagination
         page = request.args.get('page', type=int)
@@ -40,7 +44,11 @@ def get_user_granted_roles_privileges():
         
         # Return all if no pagination
         results = query.all()
-        return make_response(jsonify([item.json() for item in results]), 200)
+        # return make_response(jsonify(result=[item.json() for item in results]), 200)
+        return make_response(jsonify({
+            "result": [item.json() for item in results]
+        }), 200)
+        
 
     except Exception as e:
         return make_response(jsonify({
