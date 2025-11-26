@@ -1379,6 +1379,27 @@ class DefApiEndpointRole(db.Model):
         }
 
 
+
+class DefUserGrantedRolesPrivilegesV(db.Model):
+    __tablename__ = 'def_user_granted_roles_privileges_v'
+    __table_args__ = {"schema": "apps"}
+
+    user_id = db.Column(db.Integer, primary_key=True)
+    user_name = db.Column(db.String)
+    tenant_id = db.Column(db.Integer)
+
+    granted_roles = db.Column(JSONB)
+    granted_privileges = db.Column(JSONB)
+
+    def json(self):
+        return {
+            'user_id': self.user_id,
+            'user_name': self.user_name,
+            'tenant_id': self.tenant_id,
+            'granted_roles': self.granted_roles,
+            'granted_privileges': self.granted_privileges
+        }
+
 class ForgotPasswordRequest(db.Model):
     __tablename__ = "forgot_password_requests"
     __table_args__ = {"schema": "apps"}
