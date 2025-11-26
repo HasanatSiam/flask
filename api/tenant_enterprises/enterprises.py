@@ -125,32 +125,32 @@ def get_enterprises_v1():
 
 
 # Get one enterprise setup by tenant_id
-@tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['GET'])
-@jwt_required()
-def get_enterprise():
-    try:
-        tenant_id = request.args.get('tenant_id', type=int)
-        if not tenant_id:
-            return make_response(jsonify({
-                "message": "tenant_id query parameter is required"
-            }), 400)
+# @tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['GET'])
+# @jwt_required()
+# def get_enterprise():
+#     try:
+#         tenant_id = request.args.get('tenant_id', type=int)
+#         if not tenant_id:
+#             return make_response(jsonify({
+#                 "message": "tenant_id query parameter is required"
+#             }), 400)
 
-        setup = DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).first()
+#         setup = DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).first()
 
-        if setup:
-            return make_response(jsonify({
-                "result": setup.json()
-            }), 200)
+#         if setup:
+#             return make_response(jsonify({
+#                 "result": setup.json()
+#             }), 200)
 
-        return make_response(jsonify({
-            "message": "Enterprise setup not found"
-        }), 404)
+#         return make_response(jsonify({
+#             "message": "Enterprise setup not found"
+#         }), 404)
 
-    except Exception as e:
-        return make_response(jsonify({
-            "message": "Error retrieving enterprise setup",
-            "error": str(e)
-        }), 500)
+#     except Exception as e:
+#         return make_response(jsonify({
+#             "message": "Error retrieving enterprise setup",
+#             "error": str(e)
+#         }), 500)
 
 
 
@@ -199,9 +199,9 @@ def delete_enterprise():
 
 
 
-@tenant_enterprise_bp.route('/def_tenant_enterprise_setup_v', methods=['GET'])
+@tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['GET'])
 @jwt_required()
-def get_tenant_enterprise_setup_v():
+def get_tenant_enterprise_setup():
     try:
         # Base query using the View model
         query = db.session.query(DefTenantEnterpriseSetupV)
@@ -210,6 +210,15 @@ def get_tenant_enterprise_setup_v():
         enterprise_name = request.args.get('enterprise_name', '').strip()
         if enterprise_name:
             query = query.filter(DefTenantEnterpriseSetupV.enterprise_name.ilike(f'%{enterprise_name}%'))
+
+        # Filter by tenant_id
+        tenant_id = request.args.get('tenant_id', type=int)
+        if tenant_id:
+            query = query.filter(DefTenantEnterpriseSetupV.tenant_id == tenant_id)
+            result = query.first()
+            return make_response(jsonify({
+                "result": result.json() if result else {}
+            }), 200)
 
         # Ordering
         query = query.order_by(DefTenantEnterpriseSetupV.tenant_id.desc())
