@@ -27,7 +27,8 @@ mail = Mail()
 
 # Fetch Redis and database URLs from environment variables
 redis_url = os.environ.get("MESSAGE_BROKER")         
-database_url = os.environ.get("DATABASE_URL")   
+database_url = os.environ.get("DATABASE_URL")        # Production DB
+database_url_test = os.environ.get("DATABASE_URL_TEST")  # Test DB for frontend testing
 FLOWER_URL = os.environ.get("FLOWER_URL")
 crypto_secret_key = os.getenv("CRYPTO_SECRET_KEY")
 jwt_secret_key = os.getenv("JWT_SECRET_ACCESS_TOKEN")
