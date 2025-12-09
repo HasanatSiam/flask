@@ -22,21 +22,27 @@ def create_aggregate_table():
 
         if not materialized_view_name:
             return make_response(jsonify({"message": "Materialized view name is required"}), 400)
+        
+        engine = db.get_engine(bind='db_test')
 
         # Construct SQL with both arguments
         sql = text(f"SELECT create_imat('{materialized_view_name}', '{schema_name}')")
 
-        db.session.execute(sql)
-        db.session.commit()
+        with engine.connect() as connection:
+            connection.execute(sql)
+            connection.commit()
 
         return make_response(jsonify({
-            "message": f"Aggregate table created successfully for {materialized_view_name} in schema {schema_name}"
+            "message": f"The aggregate table '{materialized_view_name}' has been successfully provisioned within schema '{schema_name}'.",
+            "details": {
+                "view_name": materialized_view_name,
+                "schema": schema_name
+            }
         }), 201)
 
     except Exception as e:
-        db.session.rollback()
         return make_response(jsonify({
-            "message": "Error creating aggregate table",
+            "message": "Failed to create aggregate table",
             "error": str(e)
         }), 500)
 
@@ -51,11 +57,7 @@ def create_mv_endpoint():
     """
     API to create a materialized view with structured payload.
     All helper functions are inside the route.
-    """
-
-    # -------------------------
-    # HELPER FUNCTIONS
-    # -------------------------
+    """    
     IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
     def validate_ident(name):
@@ -242,12 +244,13 @@ def create_mv_endpoint():
     REFRESH MATERIALIZED VIEW {mv_schema}.{mv_name};
     """
 
+    engine = db.get_engine(bind='db_test')
     try:
-        conn = db.session.connection()
+        conn = engine.connect()
         conn.execute(text(create_mv_sql))
-        db.session.commit()
+        conn.commit()
     except Exception as e:
-        db.session.rollback()
+        conn.rollback()
         return jsonify({
             "error": "Failed creating MV",
             "detail": str(e),

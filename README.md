@@ -63,8 +63,11 @@ Ensure you have the following installed:
 Create a `.env` file in the root directory with the following variables:
 
 ```env
-# Database
+# Database (Production)
 DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+
+# Database (Test) - Optional, for frontend testing without affecting production
+DATABASE_URL_TEST=postgresql://user:password@localhost:5432/dbname_test
 
 # Redis / Celery
 MESSAGE_BROKER=redis://localhost:6379/0
@@ -87,6 +90,19 @@ EMAIL_PASS=your_email_password
 > - For **local testing**, ensure `load_dotenv()` is used to load variables from the `.env` file.
 > - For **production**, use `env_path` or system environment variables directly.
 > - **Files to modify:** `config.py` and `executors/__init__.py`.
+
+### Test Database
+
+The test database (`DATABASE_URL_TEST`) runs alongside production. Use it for:
+- Frontend team testing without affecting production data
+- API development and experimentation
+- Integration testing
+
+**Test API Endpoints:**
+- `GET /api/test/health` - Check test database connection
+- `POST /api/test/query` - Execute raw SQL queries on test database
+
+To create new test APIs, add them to `api/test_apis/` and use `db_test` instead of `db`.
 
 ## Running the Application
 
