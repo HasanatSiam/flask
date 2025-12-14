@@ -4,12 +4,12 @@ from sqlalchemy import text
 from executors.extensions import db
 import re
 
-from . import aggregation_bp    
+from . import data_modeling_bp    
 
 
 
 
-@aggregation_bp.route('/create_aggregate_table', methods=['POST'])
+@data_modeling_bp.route('/create_aggregate_table', methods=['POST'])
 @jwt_required()
 def create_aggregate_table():
     try:
@@ -49,7 +49,7 @@ def create_aggregate_table():
 
 
 
-@aggregation_bp.route("/create_mv", methods=["POST"])
+@data_modeling_bp.route("/create_mv", methods=["POST"])
 def create_mv_endpoint_v1():
     """
     API to create a materialized view with structured payload.
