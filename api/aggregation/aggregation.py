@@ -104,11 +104,15 @@ def create_mv_endpoint_v1():
             if not isinstance(args, list):
                 raise ValueError("Function 'args' must be a list")
             args_list = []
-            for arg in args:
+            for i, arg in enumerate(args):
                 if isinstance(arg, dict) and 'column' in arg:
                     args_list.append(arg['column'])
                 else:
-                    args_list.append(str(arg))
+                    val = str(arg)
+                    if func_name.lower() == 'date_trunc' and i == 0:
+                        if not (val.startswith("'") and val.endswith("'")):
+                            val = f"'{val}'"
+                    args_list.append(val)
             expr = f"{func_name}({', '.join(args_list)})"
 
         else:
@@ -177,11 +181,16 @@ def create_mv_endpoint_v1():
                 func = item['function']
                 args = func.get('args', [])
                 args_list = []
-                for arg in args:
+                func_name = func.get('name', '')
+                for i, arg in enumerate(args):
                     if isinstance(arg, dict) and 'column' in arg:
                         args_list.append(arg['column'])
                     else:
-                        args_list.append(str(arg))
+                        val = str(arg)
+                        if func_name.lower() == 'date_trunc' and i == 0:
+                            if not (val.startswith("'") and val.endswith("'")):
+                                val = f"'{val}'"
+                        args_list.append(val)
                 # Handle empty args by calling function with no arguments
                 if not args_list:
                     exprs.append(f"{func['name']}()")
@@ -236,16 +245,22 @@ def create_mv_endpoint_v1():
     # -------------------------
     # CREATE MATERIALIZED VIEW
     # -------------------------
-    create_mv_sql = f"""
-    CREATE SCHEMA IF NOT EXISTS {mv_schema};
-    DROP MATERIALIZED VIEW IF EXISTS {mv_schema}.{mv_name} CASCADE;
-    CREATE MATERIALIZED VIEW {mv_schema}.{mv_name} AS {sql} WITH NO DATA;
-    REFRESH MATERIALIZED VIEW {mv_schema}.{mv_name};
-    """
-
     engine = db.get_engine(bind='db_test')
     try:
         conn = engine.connect()
+
+        # Check if MV exists
+        check_sql = text("SELECT 1 FROM pg_matviews WHERE schemaname = :schema AND matviewname = :name")
+        result = conn.execute(check_sql, {"schema": mv_schema, "name": mv_name}).fetchone()
+        if result:
+            return jsonify({"ok": False, "error": f"Materialized view '{mv_schema}.{mv_name}' already exists"}), 400
+
+        create_mv_sql = f"""
+        CREATE SCHEMA IF NOT EXISTS {mv_schema};
+        CREATE MATERIALIZED VIEW {mv_schema}.{mv_name} AS {sql} WITH NO DATA;
+        REFRESH MATERIALIZED VIEW {mv_schema}.{mv_name};
+        """
+
         conn.execute(text(create_mv_sql))
         conn.commit()
     except Exception as e:
