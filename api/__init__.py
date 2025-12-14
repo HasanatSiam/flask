@@ -10,7 +10,7 @@ from .tenant_enterprises import tenant_enterprise_bp
 from .controls import controls_bp
 from .messages import messages_bp
 from .data_sources import data_sources_bp
-from .aggregation import aggregation_bp
+from .data_modeling import data_modeling_bp
 
 def register_blueprints(app):
     app.register_blueprint(users_bp)
@@ -24,5 +24,5 @@ def register_blueprints(app):
     app.register_blueprint(controls_bp)
     app.register_blueprint(messages_bp)
     app.register_blueprint(data_sources_bp)
-    app.register_blueprint(aggregation_bp)
+    app.register_blueprint(data_modeling_bp)
     
