@@ -49,15 +49,12 @@ def create_aggregate_table():
 
 
 
-
-
-
 @aggregation_bp.route("/create_mv", methods=["POST"])
-def create_mv_endpoint():
+def create_mv_endpoint_v1():
     """
     API to create a materialized view with structured payload.
     All helper functions are inside the route.
-    """    
+    """
     IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
     def validate_ident(name):
@@ -81,7 +78,7 @@ def create_mv_endpoint():
         expr = None
 
         # 1️⃣ Simple column
-        if 'column' in col_def and 'aggregate' not in col_def and 'function' not in col_def:
+        if 'column' in col_def and 'aggregate' not in col_def:
             expr = col_def['column']
 
         # 2️⃣ Aggregate function
@@ -179,15 +176,17 @@ def create_mv_endpoint():
             elif 'function' in item:
                 func = item['function']
                 args = func.get('args', [])
-                if not args:
-                    raise ValueError("Function in group_by must have args")
                 args_list = []
                 for arg in args:
                     if isinstance(arg, dict) and 'column' in arg:
                         args_list.append(arg['column'])
                     else:
                         args_list.append(str(arg))
-                exprs.append(f"{func['name']}({', '.join(args_list)})")
+                # Handle empty args by calling function with no arguments
+                if not args_list:
+                    exprs.append(f"{func['name']}()")
+                else:
+                    exprs.append(f"{func['name']}({', '.join(args_list)})")
             else:
                 raise ValueError(f"Unknown group_by item: {item}")
         return ", ".join(exprs)
