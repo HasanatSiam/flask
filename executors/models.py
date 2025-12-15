@@ -1428,3 +1428,47 @@ class ForgotPasswordRequest(db.Model):
             "last_updated_date": self.last_updated_date.isoformat() if self.last_updated_date else None,
             "is_valid": self.is_valid,
         }
+
+class InfoSchemaTable(db.Model):
+    __tablename__ = 'tables'
+    __bind_key__ = 'db_test'
+    __table_args__ = {'schema': 'information_schema', 'extend_existing': True}
+
+    # table_catalog = db.Column(db.String, primary_key=True)
+    table_schema = db.Column(db.String, primary_key=True)
+    table_name = db.Column(db.String, primary_key=True)
+    # table_type = db.Column(db.String)
+
+    def json(self):
+        return {
+            # 'table_catalog': self.table_catalog,
+            'table_schema': self.table_schema,
+            'table_name': self.table_name,
+            # 'table_type': self.table_type
+        }
+
+class InfoSchemaColumn(db.Model):
+    __tablename__ = 'columns'
+    __bind_key__ = 'db_test'
+    __table_args__ = {'schema': 'information_schema', 'extend_existing': True}
+
+    # table_catalog = db.Column(db.String, primary_key=True)
+    table_schema = db.Column(db.String, primary_key=True)
+    table_name = db.Column(db.String, primary_key=True)
+    column_name = db.Column(db.String, primary_key=True)
+    # ordinal_position = db.Column(db.Integer)
+    column_default = db.Column(db.String)
+    is_nullable = db.Column(db.String)
+    data_type = db.Column(db.String)
+
+    def json(self):
+        return {
+            # 'table_catalog': self.table_catalog,
+            'table_schema': self.table_schema,
+            'table_name': self.table_name,
+            'column_name': self.column_name,
+            # 'ordinal_position': self.ordinal_position,
+            'column_default': self.column_default,
+            'is_nullable': self.is_nullable,
+            'data_type': self.data_type
+        }
