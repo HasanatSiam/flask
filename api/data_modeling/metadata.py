@@ -1,7 +1,8 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, and_, case
 from executors.extensions import db
+from executors.models import InfoSchemaTable, InfoSchemaColumn
 
 from . import data_modeling_bp
 
@@ -76,6 +77,69 @@ def get_table_metadata(table_name):
             "schema": schema_name,
             "columns": column_details
         }), 200)
+
+    except Exception as e:
+        return make_response(jsonify({
+            "message": "Failed to fetch table metadata",
+            "error": str(e)
+        }), 500)
+
+
+@data_modeling_bp.route('/tables/v1', methods=['GET'])
+@jwt_required()
+def get_all_tables_v1():
+    try:
+        # Query full model objects to use .json()
+        results = db.session.query(InfoSchemaTable)\
+            .filter(InfoSchemaTable.table_schema.notin_(['information_schema', 'pg_catalog', 'pg_toast']))\
+            .filter(~InfoSchemaTable.table_schema.like('pg_toast_%'))\
+            .order_by(InfoSchemaTable.table_schema, InfoSchemaTable.table_name)\
+            .all()
+
+        schema_map = {}
+        for row in results:
+            data = row.json()
+            schema = data['table_schema']
+            
+            if schema not in schema_map:
+                schema_map[schema] = []
+            
+            schema_map[schema].append(data)
+
+        response_data = []
+        for schema in sorted(schema_map.keys()):
+            response_data.append({
+                "schema": schema,
+                "tables": schema_map[schema]
+            })
+
+        return make_response(jsonify(response_data), 200)
+
+    except Exception as e:
+        return make_response(jsonify({
+            "message": "Failed to fetch tables",
+            "error": str(e)
+        }), 500)
+
+
+@data_modeling_bp.route('/tables/v1/<string:table_name>', methods=['GET'])
+@jwt_required()
+def get_table_metadata_v1(table_name):
+    try:
+        schema_name = request.args.get('schema', 'public')
+        
+        # Query only columns from the table
+        columns = db.session.query(InfoSchemaColumn).filter(
+            InfoSchemaColumn.table_name == table_name,
+            InfoSchemaColumn.table_schema == schema_name
+        ).all()
+        
+        if not columns:
+             return make_response(jsonify({"message": f"Table or View '{table_name}' not found in schema '{schema_name}'"}), 404)
+
+        column_details = [col.json() for col in columns]
+
+        return make_response(jsonify(column_details), 200)
 
     except Exception as e:
         return make_response(jsonify({
