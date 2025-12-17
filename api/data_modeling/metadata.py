@@ -8,24 +8,75 @@ from . import data_modeling_bp
 
 @data_modeling_bp.route('/tables', methods=['GET'])
 @jwt_required()
-def get_all_tables():
+def tables_handler():
     try:
-        engine = db.get_engine(bind='db_test')
+        table_name = request.args.get('table')
+        schema_name = request.args.get('schema')
+
+        try:
+            engine = db.get_engine(bind='db_test')
+        except KeyError:
+            engine = db.engine
         inspector = inspect(engine)
-        
+
+        # -------------------------------
+        # CASE 1: TABLE METADATA REQUEST
+        # /tables?table=users
+        # /tables?table=users&schema=public
+        # -------------------------------
+        if table_name:
+            schema = schema_name or 'public'
+
+            # Check table or view existence
+            if not inspector.has_table(table_name, schema=schema):
+                views = inspector.get_view_names(schema=schema)
+                if table_name not in views:
+                    return make_response(jsonify({
+                        "message": f"Table or View '{table_name}' not found in schema '{schema}'"
+                    }), 404)
+
+            columns = inspector.get_columns(table_name, schema=schema)
+
+            column_details = []
+            for col in columns:
+                column_details.append({
+                    "name": col['name'],
+                    "type": str(col['type']),
+                    "nullable": col.get('nullable'),
+                    "default": str(col.get('default')) if col.get('default') else None,
+                    "primary_key": col.get('primary_key', False)
+                })
+
+            return make_response(jsonify({
+                "schema": schema,
+                "table": table_name,
+                "columns": column_details
+            }), 200)
+
+        # ---------------------------------
+        # CASE 2: LIST TABLES / SCHEMAS
+        # /tables
+        # /tables?schema=public
+        # ---------------------------------
         schemas = inspector.get_schema_names()
-        # Filter out common system schemas to keep the list relevant
         system_schemas = {'information_schema', 'pg_catalog', 'pg_toast'}
-        user_schemas = [s for s in schemas if s not in system_schemas and not s.startswith('pg_toast_')]
+
+        if schema_name:
+            schemas = [schema_name]
+        else:
+            schemas = [
+                s for s in schemas
+                if s not in system_schemas and not s.startswith('pg_toast_')
+            ]
 
         all_data = []
         total_count = 0
 
-        for schema in user_schemas:
+        for schema in schemas:
             tables = inspector.get_table_names(schema=schema)
             views = inspector.get_view_names(schema=schema)
             objects = sorted(tables + views)
-            
+
             if objects:
                 all_data.append({
                     "schema": schema,
@@ -40,49 +91,10 @@ def get_all_tables():
 
     except Exception as e:
         return make_response(jsonify({
-            "message": "Failed to fetch tables",
+            "message": "Failed to fetch table information",
             "error": str(e)
         }), 500)
 
-
-@data_modeling_bp.route('/tables/<string:table_name>', methods=['GET'])
-@jwt_required()
-def get_table_metadata(table_name):
-    try:
-        schema_name = request.args.get('schema', 'public')
-
-        engine = db.get_engine(bind='db_test')
-        inspector = inspect(engine)
-        
-        if not inspector.has_table(table_name, schema=schema_name):
-             # Check if it is a view
-             view_names = inspector.get_view_names(schema=schema_name)
-             if table_name not in view_names:
-                return make_response(jsonify({"message": f"Table or View '{table_name}' not found in schema '{schema_name}'"}), 404)
-
-        columns = inspector.get_columns(table_name, schema=schema_name)
-        
-        column_details = []
-        for col in columns:
-            column_details.append({
-                "name": col['name'],
-                "type": str(col['type']),
-                "nullable": col.get('nullable'),
-                "default": str(col.get('default')) if col.get('default') else None,
-                "primary_key": col.get('primary_key', False)
-            })
-
-        return make_response(jsonify({
-            "table": table_name,
-            "schema": schema_name,
-            "columns": column_details
-        }), 200)
-
-    except Exception as e:
-        return make_response(jsonify({
-            "message": "Failed to fetch table metadata",
-            "error": str(e)
-        }), 500)
 
 
 @data_modeling_bp.route('/tables/v1', methods=['GET'])
