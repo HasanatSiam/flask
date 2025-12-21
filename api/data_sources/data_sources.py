@@ -32,7 +32,7 @@ def create_def_data_source():
         )
         db.session.add(new_datasource)
         db.session.commit()
-        return make_response(jsonify({'message': 'Added successfully'}), 201)
+        return make_response(jsonify({'message': 'Added successfully', 'result': new_datasource.json()}), 201)
     except Exception as e:
         return make_response(jsonify({'message': 'Error creating data source', 'error': str(e)}), 500)
 
@@ -107,7 +107,7 @@ def update_def_data_source():
             ds.last_updated_by = get_jwt_identity()
             ds.last_update_date = datetime.utcnow()
             db.session.commit()
-            return make_response(jsonify({'message': 'Edited successfully'}), 200)
+            return make_response(jsonify({'message': 'Edited successfully', 'result': ds.json()}), 200)
         return make_response(jsonify({'message': 'Data source not found'}), 404)
     except Exception as e:
         return make_response(jsonify({'message': 'Error editing data source', 'error': str(e)}), 500)
