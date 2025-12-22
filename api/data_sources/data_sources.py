@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import request, jsonify, make_response 
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from sqlalchemy import or_
+from sqlalchemy import or_, create_engine, text
 from executors.extensions import db
 from executors.models import (
     DefDataSource
@@ -130,3 +130,42 @@ def delete_def_data_source():
     except Exception as e:
         return make_response(jsonify({'message': 'Error deleting data source', 'error': str(e)}), 500)
 
+
+@data_sources_bp.route('/test-connection', methods=['POST'])
+@jwt_required()
+def test_db_connection_standalone():
+    try:
+        data = request.get_json()
+        if not data:
+            return make_response(jsonify({"success": False, "message": "No JSON payload"}), 400)
+            
+        conn_type = data.get('connection_type', 'postgresql').lower()
+        host = data.get('host')
+        port = data.get('port')
+        database = data.get('database_name')
+        user = data.get('username')
+        password = data.get('password')
+        
+        # Verify mandatory fields
+        missing = [f for f in ['host', 'port', 'database_name', 'username', 'password'] if not data.get(f)]
+        if missing:
+            return make_response(jsonify({"success": False, "message": f"Missing fields: {', '.join(missing)}"}), 400)
+
+        if conn_type == 'postgresql':
+            # Basic postgresql URL
+            url = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+        elif conn_type == 'mysql':
+            url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+        else:
+            return make_response(jsonify({"success": False, "message": f"Unsupported standalone type: {conn_type}"}), 400)
+            
+        # Attempt connection with a short timeout
+        engine = create_engine(url, connect_args={'connect_timeout': 5} if conn_type == 'postgresql' else {})
+        with engine.connect() as conn:
+            # Try a simple query to verify
+
+            conn.execute(text("SELECT 1"))
+            return make_response(jsonify({"success": True, "message": "Connection successful"}), 200)
+            
+    except Exception as e:
+        return make_response(jsonify({"success": False, "message": str(e)}), 400)
