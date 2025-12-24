@@ -127,8 +127,6 @@ def get_user_granted_roles():
 
 
 
-
-
 @rbac_bp.route('/def_user_granted_roles', methods=['PUT'])
 @jwt_required()
 def update_user_granted_roles():
@@ -217,9 +215,6 @@ def update_user_granted_roles():
             "error": str(e),
             "message": "Error updating user-role mappings"
         }), 500)
-
-
-
 
 
 

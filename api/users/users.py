@@ -1,95 +1,18 @@
-import os 
-import time
-import re
-import json
-import uuid
-import requests
-import traceback
-import logging
-import time
-import re
-import ast
-import math
-from redis import Redis
-from requests.auth import HTTPBasicAuth
-from zoneinfo import ZoneInfo
-from itertools import count
-from functools import wraps
-from flask_cors import CORS 
-from dotenv import load_dotenv            # To load environment variables from a .env file
-from celery.schedules import crontab
-from celery.result import AsyncResult      # For checking the status of tasks
-from redbeat import RedBeatSchedulerEntry
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import create_engine, Text, desc, cast, TIMESTAMP, func, or_, text
-from datetime import datetime, timedelta, timezone
-from flask import Flask, request, jsonify, make_response       # Flask utilities for handling requests and responses
-from itsdangerous import BadSignature,SignatureExpired, URLSafeTimedSerializer
-from flask_mail import Message as MailMessage
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, decode_token
-from werkzeug.security import generate_password_hash, check_password_hash
-from executors import flask_app # Import Flask app and tasks
-from executors.extensions import db
-from celery import current_app as celery  # Access the current Celery app
-from executors.models import (
-    DefAsyncTask,
-    DefAsyncTaskParam,
-    DefAsyncTaskSchedule,
-    DefAsyncTaskRequest,
-    DefAsyncTaskSchedulesV,
-    DefAsyncExecutionMethods,
-    DefAsyncTaskScheduleNew,
-    DefTenant,
-    DefUser,
-    DefPerson,
-    DefUserCredential,
-    DefAccessProfile,
-    DefUsersView,
-    Message,
-    DefTenantEnterpriseSetup,
-    DefTenantEnterpriseSetupV,
-    DefAccessModel,
-    DefAccessModelLogic,
-    DefAccessModelLogicAttribute,
-    DefGlobalCondition,
-    DefGlobalConditionLogic,
-    DefGlobalConditionLogicAttribute,
-    DefAccessPoint,
-    DefAccessPointsV,
-    DefDataSource,
-    DefAccessEntitlement,
-    DefControl,
-    DefActionItem,
-    DefActionItemsV,
-    DefActionItemAssignment,
-    DefAlert,
-    DefAlertRecipient,
-    DefProcess,
-    DefControlEnvironment,
-    NewUserInvitation,
-    DefJobTitle,
-    DefAccessEntitlementElement,
-    DefNotifications,
-    DefRoles,
-    DefUserGrantedRole,
-    DefPrivilege,
-    DefUserGrantedPrivilege,
-    DefApiEndpoint,
-    DefApiEndpointRole
-)
-from redbeat_s.red_functions import create_redbeat_schedule, update_redbeat_schedule, delete_schedule_from_redis
-from ad_hoc.ad_hoc_functions import execute_ad_hoc_task, execute_ad_hoc_task_v1
-from config import redis_url
+from datetime import datetime
+from flask import request, jsonify, make_response
+from werkzeug.security import generate_password_hash
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
-from flask import request
-from flask_jwt_extended import jwt_required
+from executors.extensions import db
 from utils.auth import role_required
-from executors.models import DefUser, DefPerson, DefUsersView
+from executors.models import(DefUser, 
+                             DefPerson, DefUsersView, DefUserCredential, DefAccessProfile, NewUserInvitation)
 from . import users_bp
 
 
 
-@flask_app.route('/users', methods=['POST'])
+
+@users_bp.route('/users', methods=['POST'])
 @jwt_required()
 def register_user():
     try:
@@ -117,6 +40,7 @@ def register_user():
             "original": "uploads/profiles/default/profile.jpg",
             "thumbnail": "uploads/profiles/default/thumbnail.jpg"
         }
+
 
         # Check for existing user/email
         # if DefUser.query.filter_by(user_name=user_name).first():
@@ -199,30 +123,57 @@ def register_user():
         db.session.rollback()
         return jsonify({"message": "Registration failed", "error": str(e)}), 500
 
-@flask_app.route('/users', methods=['GET'])
+
+
+@users_bp.route('/users', methods=['GET'])
 @jwt_required()
-@role_required()
-def defusers():
+def get_users_unified():
     try:
-        defusers = DefUsersView.query.order_by(DefUsersView.user_id.desc()).all()
-        return make_response(jsonify([defuser.json() for defuser in defusers]), 200)
+        # Check for specific user ID
+        user_id = request.args.get('user_id', type=int)
+        if user_id:
+            user = DefUsersView.query.filter_by(user_id=user_id).first()
+            if user:
+                return make_response(jsonify({"result" : user.json()}), 200)
+            return make_response(jsonify({'message': 'User not found'}), 404)
+
+        # Base query
+        query = DefUsersView.query
+
+        # Search filter
+        user_name = request.args.get('user_name', '').strip()
+        if user_name:
+            query = query.filter(DefUsersView.user_name.ilike(f'%{user_name}%'))
+
+        # Ordering
+        query = query.order_by(DefUsersView.user_id.desc())
+
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [user.json() for user in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+        
+        # Return all if no pagination
+        users = query.all()
+        return make_response(jsonify({"result": [user.json() for user in users]}), 200)
+
     except Exception as e:
-        return make_response(jsonify({'message': 'Error getting users', 'error': str(e)}), 500)
-    
-    
-@flask_app.route('/users/<int:user_id>', methods=['GET'])
-@jwt_required()
-def get_specific_user(user_id):
-    try:
-        user = DefUsersView.query.filter_by(user_id=user_id).first()
-        if user:
-            return make_response(jsonify(user.json()), 200)
-        return make_response(jsonify({'message': 'User not found'}), 404)
-    except Exception as e:
-        return make_response(jsonify({'message': 'Error getting User', 'error': str(e)}), 500)  
+        return make_response(jsonify({'message': 'Error fetching users', 'error': str(e)}), 500)
+
+
     
 
-@flask_app.route('/users/<int:user_id>', methods=['PUT'])
+    
+
+@users_bp.route('/users/<int:user_id>', methods=['PUT'])
 @jwt_required()
 def update_specific_user(user_id):
     try:
@@ -297,7 +248,7 @@ def update_specific_user(user_id):
 
 
 
-@flask_app.route('/users/<int:user_id>', methods=['DELETE'])
+@users_bp.route('/users/<int:user_id>', methods=['DELETE'])
 @jwt_required()
 def delete_specific_user(user_id):
     try:
@@ -332,4 +283,5 @@ def delete_specific_user(user_id):
             'message': 'Error deleting user',
             'error': str(e)
         }), 500)
+
 

@@ -1,4 +1,3 @@
-
 from . import access_models_bp
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -9,8 +8,7 @@ from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
     DefAccessModelLogic,
-    DefAccessModelLogicAttribute,
-
+    DefAccessModelLogicAttribute
 )
 
 
@@ -58,11 +56,30 @@ def create_def_access_model_logic_attribute():
 @jwt_required()
 def get_def_access_model_logic_attributes():
     try:
-        attributes = DefAccessModelLogicAttribute.query.order_by(DefAccessModelLogicAttribute.id.desc()).all()
-        return make_response(jsonify([attr.json() for attr in attributes]), 200)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving attributes", "error": str(e)}), 500)
+        id = request.args.get('id', type=int)
 
+        # Case 1: Get single attribute by ID
+        if id:
+            attribute = DefAccessModelLogicAttribute.query.filter_by(id=id).first()
+            if attribute:
+                return make_response(jsonify({"result": attribute.json()}), 200)
+            else:
+                return make_response(jsonify({'message': 'Attribute not found'}), 404)
+
+        # Case 2: Get all attributes
+        attributes = DefAccessModelLogicAttribute.query.order_by(
+            DefAccessModelLogicAttribute.id.desc()
+        ).all()
+
+        return make_response(jsonify({
+            "result": [attr.json() for attr in attributes]
+        }), 200)
+
+    except Exception as e:
+        return make_response(jsonify({
+            "message": "Error retrieving attributes",
+            "error": str(e)
+        }), 500)
 
 
 @access_models_bp.route('/def_access_model_logic_attributes/upsert', methods=['POST'])
@@ -180,24 +197,13 @@ def upsert_def_access_model_logic_attributes():
         }), 500)
 
 
-
-@access_models_bp.route('/def_access_model_logic_attributes/<int:id>', methods=['GET'])
+@access_models_bp.route('/def_access_model_logic_attributes', methods=['PUT'])
 @jwt_required()
-def get_def_access_model_logic_attribute(id):
+def update_def_access_model_logic_attribute():
     try:
-        attribute = DefAccessModelLogicAttribute.query.filter_by(id=id).first()
-        if attribute:
-            return make_response(jsonify(attribute.json()), 200)
-        else:
-            return make_response(jsonify({'message': 'Attribute not found'}), 404)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving attribute", "error": str(e)}), 500)
-
-
-@access_models_bp.route('/def_access_model_logic_attributes/<int:id>', methods=['PUT'])
-@jwt_required()
-def update_def_access_model_logic_attribute(id):
-    try:
+        id = request.args.get('id', type=int)
+        if not id:
+            return make_response(jsonify({'message': 'id query parameter is required'}), 400)
         attribute = DefAccessModelLogicAttribute.query.filter_by(id=id).first()
         if attribute:
             # attribute.def_access_model_logic_id = request.json.get('def_access_model_logic_id', attribute.def_access_model_logic_id)
@@ -214,10 +220,13 @@ def update_def_access_model_logic_attribute(id):
         return make_response(jsonify({'message': 'Error editing attribute', 'error': str(e)}), 500)
 
 
-@access_models_bp.route('/def_access_model_logic_attributes/<int:id>', methods=['DELETE'])
+@access_models_bp.route('/def_access_model_logic_attributes', methods=['DELETE'])
 @jwt_required()
-def delete_def_access_model_logic_attribute(id):
+def delete_def_access_model_logic_attribute():
     try:
+        id = request.args.get('id', type=int)
+        if not id:
+            return make_response(jsonify({'message': 'id query parameter is required'}), 400)
         attribute = DefAccessModelLogicAttribute.query.filter_by(id=id).first()
         if attribute:
             db.session.delete(attribute)
@@ -227,7 +236,4 @@ def delete_def_access_model_logic_attribute(id):
             return make_response(jsonify({'message': 'Attribute not found'}), 404)
     except Exception as e:
         return make_response(jsonify({'message': 'Error deleting attribute', 'error': str(e)}), 500)
-
-
-
 

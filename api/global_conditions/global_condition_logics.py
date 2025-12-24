@@ -10,11 +10,11 @@ from executors.models import (
     DefGlobalConditionLogic
 )
 
-from . import glob_conditions_bp
+from . import global_conditions_bp
 
 
 # def_global_condition_logics
-@glob_conditions_bp.route('/def_global_condition_logics', methods=['POST'])
+@global_conditions_bp.route('/def_global_condition_logics', methods=['POST'])
 @jwt_required()
 def create_def_global_condition_logic():
     try:
@@ -57,7 +57,7 @@ def create_def_global_condition_logic():
     except Exception as e:
         return make_response(jsonify({"message": f"Error: {str(e)}"}), 500)
 
-@glob_conditions_bp.route('/def_global_condition_logics/upsert', methods=['POST'])
+@global_conditions_bp.route('/def_global_condition_logics/upsert', methods=['POST'])
 @jwt_required()
 def upsert_def_global_condition_logics():
     try:
@@ -164,33 +164,49 @@ def upsert_def_global_condition_logics():
         }), 500)
 
 
-@glob_conditions_bp.route('/def_global_condition_logics', methods=['GET'])
+@global_conditions_bp.route('/def_global_condition_logics', methods=['GET'])
 @jwt_required()
 def get_def_global_condition_logics():
     try:
-        logics = DefGlobalConditionLogic.query.order_by(DefGlobalConditionLogic.def_global_condition_logic_id.desc()).all()
-        return make_response(jsonify([logic.json() for logic in logics]), 200)
+        def_global_condition_logic_id = request.args.get('def_global_condition_logic_id', type=int)
+
+        # Case 1: Single logic by ID
+        if def_global_condition_logic_id:
+            logic = DefGlobalConditionLogic.query.filter_by(
+                def_global_condition_logic_id=def_global_condition_logic_id
+            ).first()
+
+            if logic:
+                return make_response(jsonify({"result": logic.json()}), 200)
+
+            return make_response(jsonify({
+                "message": "Global Condition Logic not found"
+            }), 404)
+
+        # Case 2: Get all logics
+        logics = DefGlobalConditionLogic.query.order_by(
+            DefGlobalConditionLogic.def_global_condition_logic_id.desc()
+        ).all()
+
+        return make_response(jsonify({
+            "result": [logic.json() for logic in logics]
+        }), 200)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving Global Condition Logics", "error": str(e)}), 500)
+        return make_response(jsonify({
+            "message": "Error retrieving Global Condition Logics",
+            "error": str(e)
+        }), 500)
 
 
 
-@glob_conditions_bp.route('/def_global_condition_logics/<int:def_global_condition_logic_id>', methods=['GET'])
+@global_conditions_bp.route('/def_global_condition_logics', methods=['PUT'])
 @jwt_required()
-def get_def_global_condition_logic(def_global_condition_logic_id):
+def update_def_global_condition_logic():
     try:
-        logic = DefGlobalConditionLogic.query.filter_by(def_global_condition_logic_id=def_global_condition_logic_id).first()
-        if logic:
-            return make_response(jsonify(logic.json()), 200)
-        return make_response(jsonify({"message": "Global Condition Logic not found"}), 404)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving Global Condition Logic", "error": str(e)}), 500)
-
-
-@glob_conditions_bp.route('/def_global_condition_logics/<int:def_global_condition_logic_id>', methods=['PUT'])
-@jwt_required()
-def update_def_global_condition_logic(def_global_condition_logic_id):
-    try:
+        def_global_condition_logic_id = request.args.get('def_global_condition_logic_id', type=int)
+        if not def_global_condition_logic_id:
+            return make_response(jsonify({'message': 'def_global_condition_logic_id query parameter is required'}), 400)
         logic = DefGlobalConditionLogic.query.filter_by(def_global_condition_logic_id=def_global_condition_logic_id).first()
         if logic:
             logic.def_global_condition_id = request.json.get('def_global_condition_id', logic.def_global_condition_id)
@@ -208,10 +224,13 @@ def update_def_global_condition_logic(def_global_condition_logic_id):
         return make_response(jsonify({'message': 'Error editing Global Condition Logic', 'error': str(e)}), 500)
 
 
-@glob_conditions_bp.route('/def_global_condition_logics/<int:def_global_condition_logic_id>', methods=['DELETE'])
+@global_conditions_bp.route('/def_global_condition_logics', methods=['DELETE'])
 @jwt_required()
-def delete_def_global_condition_logic(def_global_condition_logic_id):
+def delete_def_global_condition_logic():
     try:
+        def_global_condition_logic_id = request.args.get('def_global_condition_logic_id', type=int)
+        if not def_global_condition_logic_id:
+            return make_response(jsonify({'message': 'def_global_condition_logic_id query parameter is required'}), 400)
         logic = DefGlobalConditionLogic.query.filter_by(def_global_condition_logic_id=def_global_condition_logic_id).first()
         if logic:
             db.session.delete(logic)

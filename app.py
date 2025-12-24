@@ -7,7 +7,6 @@ from flask_jwt_extended import JWTManager
 
 from flask_cors import CORS 
 from config import redis_url
-from itsdangerous import URLSafeTimedSerializer
 # from executors.extensions import db
 
 # db.init_app(flask_app)
@@ -32,15 +31,6 @@ CORS(
 # Set up the logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-
-
-
-serializer = URLSafeTimedSerializer(
-    flask_app.config["JWT_SECRET_KEY"],
-    salt="invite-link"
-)
 
 
 

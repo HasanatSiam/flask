@@ -7,8 +7,7 @@ from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
     DefAccessModelLogic,
-    DefAccessModel,
-
+    DefAccessModel
 )
 from . import access_models_bp
 
@@ -185,29 +184,41 @@ def upsert_def_access_model_logics():
 @jwt_required()
 def get_def_access_model_logics():
     try:
-        logics = DefAccessModelLogic.query.order_by(DefAccessModelLogic.def_access_model_logic_id.desc()).all()
-        return make_response(jsonify([logic.json() for logic in logics]), 200)
+        def_access_model_logic_id = request.args.get('def_access_model_logic_id', type=int)
+
+        # Case 1: Get single record
+        if def_access_model_logic_id:
+            logic = DefAccessModelLogic.query.filter_by(def_access_model_logic_id=def_access_model_logic_id).first()
+            if logic:
+                return make_response(jsonify({"result": logic.json()}), 200)
+            else:
+                return make_response(jsonify({'message': 'access model logic not found'}), 404)
+
+        # Case 2: Get all
+        logics = DefAccessModelLogic.query.order_by(
+            DefAccessModelLogic.def_access_model_logic_id.desc()
+        ).all()
+
+        return make_response(jsonify({
+            "result": [logic.json() for logic in logics]
+        }), 200)
+
     except Exception as e:
-        return make_response(jsonify({'message': 'Error retrieving access model logics', 'error': str(e)}), 500)
+        return make_response(jsonify({
+            'message': 'Error retrieving access model logics',
+            'error': str(e)
+        }), 500)
 
 
-@access_models_bp.route('/def_access_model_logics/<int:def_access_model_logic_id>', methods=['GET'])
+
+
+@access_models_bp.route('/def_access_model_logics', methods=['PUT'])
 @jwt_required()
-def get_def_access_model_logic(def_access_model_logic_id):
+def update_def_access_model_logic():
     try:
-        logic = DefAccessModelLogic.query.filter_by(def_access_model_logic_id=def_access_model_logic_id).first()
-        if logic:
-            return make_response(jsonify(logic.json()), 200)
-        else:
-            return make_response(jsonify({'message': 'access model logic not found'}), 404)
-    except Exception as e:
-        return make_response(jsonify({'message': 'Error retrieving access model logic', 'error': str(e)}), 500)
-
-
-@access_models_bp.route('/def_access_model_logics/<int:def_access_model_logic_id>', methods=['PUT'])
-@jwt_required()
-def update_def_access_model_logic(def_access_model_logic_id):
-    try:
+        def_access_model_logic_id = request.args.get('def_access_model_logic_id', type=int)
+        if not def_access_model_logic_id:
+            return make_response(jsonify({'message': 'def_access_model_logic_id query parameter is required'}), 400)
         logic = DefAccessModelLogic.query.filter_by(def_access_model_logic_id=def_access_model_logic_id).first()
         if logic:
             # logic.def_access_model_id = request.json.get('def_access_model_id', logic.def_access_model_id)
@@ -227,10 +238,13 @@ def update_def_access_model_logic(def_access_model_logic_id):
         return make_response(jsonify({'message': 'Error editing Access Model Logic', 'error': str(e)}), 500)
 
 
-@access_models_bp.route('/def_access_model_logics/<int:def_access_model_logic_id>', methods=['DELETE'])
+@access_models_bp.route('/def_access_model_logics', methods=['DELETE'])
 @jwt_required()
-def delete_def_access_model_logic(def_access_model_logic_id):
+def delete_def_access_model_logic():
     try:
+        def_access_model_logic_id = request.args.get('def_access_model_logic_id', type=int)
+        if not def_access_model_logic_id:
+            return make_response(jsonify({'message': 'def_access_model_logic_id query parameter is required'}), 400)
         logic = DefAccessModelLogic.query.filter_by(def_access_model_logic_id=def_access_model_logic_id).first()
         if logic:
             db.session.delete(logic)
@@ -240,6 +254,5 @@ def delete_def_access_model_logic(def_access_model_logic_id):
             return make_response(jsonify({'message': 'Access Model Logic not found'}), 404)
     except Exception as e:
         return make_response(jsonify({'message': 'Error deleting Access Model Logic', 'error': str(e)}), 500)
-
 
 

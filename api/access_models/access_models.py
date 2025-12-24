@@ -12,7 +12,6 @@ from executors.models import (
 )
 from . import access_models_bp
 
-
 #def_access_models
 @access_models_bp.route('/def_access_models', methods=['POST'])
 @jwt_required()
@@ -45,78 +44,74 @@ def create_def_access_models():
         return make_response(jsonify({"message": "Added successfully"}), 201)
     except Exception as e:
         return make_response(jsonify({"message": f"Error: {str(e)}"}), 500)
-    
+
 @access_models_bp.route('/def_access_models', methods=['GET'])
 @jwt_required()
 def get_def_access_models():
     try:
-        models = DefAccessModel.query.order_by(DefAccessModel.def_access_model_id.desc()).all()
-        return make_response(jsonify([model.json() for model in models]), 200)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving access models", "error": str(e)}), 500)
+        # Query parameters
+        def_access_model_id = request.args.get('def_access_model_id', type=int)
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+        model_name = request.args.get('model_name', '').strip()
 
-@access_models_bp.route('/def_access_models/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def get_paginated_def_access_models(page, limit):
-    try:
-        query = DefAccessModel.query.order_by(DefAccessModel.def_access_model_id.desc())
-        paginated = query.paginate(page=page, per_page=limit, error_out=False)
+        # Case 1: Get Single Model by ID
+        if def_access_model_id:
+            model = DefAccessModel.query.filter_by(def_access_model_id=def_access_model_id).first()
+            if model:
+                return make_response(jsonify({"result": model.json()}), 200)
+            else:
+                return make_response(jsonify({"message": "Access Model not found"}), 404)
 
-        return make_response(jsonify({
-            "items": [model.json() for model in paginated.items],
-            "total": paginated.total,
-            "pages": paginated.pages,
-            "page": paginated.page
-        }), 200)
-
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving access models", "error": str(e)}), 500)
-
-
-@access_models_bp.route('/def_access_models/search/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-def search_def_access_models(page, limit):
-    try:
-        search_query = request.args.get('model_name', '').strip()
-        search_underscore = search_query.replace(' ', '_')
-        search_space = search_query.replace('_', ' ')
+        # Base Query
         query = DefAccessModel.query
 
-        if search_query:
+        # Case 2: Search by model_name
+        if model_name:
+            search_underscore = model_name.replace(' ', '_')
+            search_space = model_name.replace('_', ' ')
             query = query.filter(
                 or_(
-                    DefAccessModel.model_name.ilike(f'%{search_query}%'),
+                    DefAccessModel.model_name.ilike(f'%{model_name}%'),
                     DefAccessModel.model_name.ilike(f'%{search_underscore}%'),
                     DefAccessModel.model_name.ilike(f'%{search_space}%')
                 )
             )
 
-        paginated = query.order_by(DefAccessModel.def_access_model_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+        # Order by ID descending
+        query = query.order_by(DefAccessModel.def_access_model_id.desc())
 
+        # Case 3: Pagination
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [model.json() for model in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        # Case 4: Get All (No pagination)
+        models = query.all()
         return make_response(jsonify({
-            "items": [model.json() for model in paginated.items],
-            "total": paginated.total,
-            "pages": 1 if paginated.total == 0 else paginated.pages,
-            "page":  paginated.page
+            "result": [model.json() for model in models]
         }), 200)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error searching access models", "error": str(e)}), 500)
+        return make_response(jsonify({
+            "message": "Error retrieving access models",
+            "error": str(e)
+        }), 500)
 
 
-@access_models_bp.route('/def_access_models/<int:def_access_model_id>', methods=['GET'])
+
+@access_models_bp.route('/def_access_models', methods=['PUT'])
 @jwt_required()
-def get_def_access_model(def_access_model_id):
+def update_def_access_model():
     try:
-        model = DefAccessModel.query.filter_by(def_access_model_id=def_access_model_id).first()
-        return make_response(jsonify(model.json()), 200)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error retrieving access models", "error": str(e)}), 500)
-
-
-@access_models_bp.route('/def_access_models/<int:def_access_model_id>', methods=['PUT'])
-@jwt_required()
-def update_def_access_model(def_access_model_id):
-    try:
+        def_access_model_id = request.args.get('def_access_model_id', type=int)
+        if not def_access_model_id:
+            return make_response(jsonify({'message': 'def_access_model_id query parameter is required'}), 400)
         model = DefAccessModel.query.filter_by(def_access_model_id=def_access_model_id).first()
         if model:
             data = request.get_json()
@@ -149,10 +144,13 @@ def update_def_access_model(def_access_model_id):
     except Exception as e:
         return make_response(jsonify({'message': 'Error Editing Access Model', 'error': str(e)}), 500)
 
-@access_models_bp.route('/def_access_models/<int:def_access_model_id>', methods=['DELETE'])
+@access_models_bp.route('/def_access_models', methods=['DELETE'])
 @jwt_required()
-def delete_def_access_model(def_access_model_id):
+def delete_def_access_model():
     try:
+        def_access_model_id = request.args.get('def_access_model_id', type=int)
+        if not def_access_model_id:
+            return make_response(jsonify({'message': 'def_access_model_id query parameter is required'}), 400)
         model = DefAccessModel.query.filter_by(def_access_model_id=def_access_model_id).first()
         if model:
             db.session.delete(model)
@@ -197,6 +195,5 @@ def cascade_delete_access_model():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
 
 

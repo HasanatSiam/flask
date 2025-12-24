@@ -120,13 +120,10 @@ class DefUser(db.Model):
     tenant_id          = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
     user_invitation_id = db.Column(db.Integer)
     date_of_birth      = db.Column(db.Date) 
-    profile_picture    = db.Column(
-    JSONB,
-    default=lambda: {
+    profile_picture    = db.Column(JSONB, default=lambda: {
         "original": "uploads/profiles/default/profile.jpg",
         "thumbnail": "uploads/profiles/default/thumbnail.jpg"
-    }
-)
+    })
 
     def json(self):
         return {
@@ -245,6 +242,8 @@ class DefUsersView(db.Model):
     tenant_id          = db.Column(db.Integer)
     user_invitation_id = db.Column(db.Integer)
     profile_picture    = db.Column(JSONB)
+    granted_roles      = db.Column(JSONB)
+
 
     def json(self):
         return {
@@ -263,7 +262,8 @@ class DefUsersView(db.Model):
             'last_update_date'  : self.last_update_date,
             'tenant_id'         : self.tenant_id,
             'user_invitation_id': self.user_invitation_id,
-            'profile_picture'   : self.profile_picture
+            'profile_picture'   : self.profile_picture,
+            'granted_roles'     : self.granted_roles
     }
         
         
@@ -780,6 +780,32 @@ class DefGlobalConditionLogicAttribute(db.Model):
         }
     
 
+class DefDataSourceApplicationType(db.Model):
+    __tablename__ = 'def_data_source_application_types'
+    __table_args__ = {'schema': 'apps'}
+
+    def_application_type_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    application_type = db.Column(db.String(50), nullable=False)
+    version = db.Column(db.String(50))
+    description = db.Column(db.String(250))
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            "def_application_type_id": self.def_application_type_id,
+            "application_type": self.application_type,
+            "version": self.version,
+            "description": self.description,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date,
+            "last_updated_by": self.last_updated_by,
+            "last_update_date": self.last_update_date
+        }
+
+
 class DefDataSource(db.Model):
     __tablename__ = 'def_data_sources'
     __table_args__ = {'schema': 'apps'}
@@ -817,7 +843,47 @@ class DefDataSource(db.Model):
             "last_update_date": self.last_update_date
         }
 
+
+class DefDataSourceConnection(db.Model):
+    __tablename__ = 'def_data_source_connections'
+    __table_args__ = {'schema': 'apps'}
+
+    def_connection_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    def_data_source_id = db.Column(db.Integer, db.ForeignKey('apps.def_data_sources.def_data_source_id'))
+    connection_type = db.Column(db.String(50), nullable=False)
+    host = db.Column(db.String(255))
+    port = db.Column(db.Integer)
+    database_name = db.Column(db.String(255))
+    username = db.Column(db.String(255))
+    password = db.Column(db.Text) 
+    additional_params = db.Column(JSONB, default=dict)
+    is_active = db.Column(db.Boolean, default=True)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            "def_connection_id": self.def_connection_id,
+            "def_data_source_id": self.def_data_source_id,
+            "connection_type": self.connection_type,
+            "host": self.host,
+            "port": self.port,
+            "database_name": self.database_name,
+            "username": self.username,
+            "additional_params": self.additional_params,
+            "is_active": self.is_active,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date,
+            "last_updated_by": self.last_updated_by,
+            "last_update_date": self.last_update_date
+        }
+
+
+
 class DefAccessPoint(db.Model):
+
     __tablename__ = "def_access_points"
     __table_args__ = {"schema": "apps"}
 
@@ -1239,10 +1305,6 @@ class NewUserInvitation(db.Model):
 #----------------RBAC------------
 
 
-
-#----------------RBAC------------
-
-
 class DefPrivilege(db.Model):
     __tablename__ = 'def_privileges'
     __table_args__ = {'schema': 'apps'}
@@ -1288,8 +1350,9 @@ class DefUserGrantedPrivilege(db.Model):
 class DefRoles(db.Model):
     __tablename__ = 'def_roles'
     __table_args__ = {'schema': 'apps'}
-    user_id = db.Column(db.Integer, db.ForeignKey('apps.def_users.user_id'), primary_key=True)
-    privilege_id = db.Column(db.Integer, db.ForeignKey('apps.def_privileges.privilege_id'), primary_key=True)
+
+    role_id = db.Column(db.Integer, primary_key=True)
+    role_name = db.Column(db.String(150), nullable=False)
     created_by = db.Column(db.Integer)
     creation_date = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by = db.Column(db.Integer)
@@ -1297,15 +1360,13 @@ class DefRoles(db.Model):
 
     def json(self):
         return {
-            'user_id': self.user_id,
-            'privilege_id': self.privilege_id,
+            'role_id': self.role_id,
+            'role_name': self.role_name,
             'created_by': self.created_by,
             'creation_date': self.creation_date,
             'last_updated_by': self.last_updated_by,
             'last_update_date': self.last_update_date
         }
-
-
 
 
 class DefUserGrantedRole(db.Model):
@@ -1383,3 +1444,97 @@ class DefApiEndpointRole(db.Model):
             'last_update_date': self.last_update_date
         }
 
+
+
+class DefUserGrantedRolesPrivilegesV(db.Model):
+    __tablename__ = 'def_user_granted_roles_privileges_v'
+    __table_args__ = {"schema": "apps"}
+
+    user_id = db.Column(db.Integer, primary_key=True)
+    user_name = db.Column(db.String)
+    tenant_id = db.Column(db.Integer)
+
+    granted_roles = db.Column(JSONB)
+    granted_privileges = db.Column(JSONB)
+
+    def json(self):
+        return {
+            'user_id': self.user_id,
+            'user_name': self.user_name,
+            'tenant_id': self.tenant_id,
+            'granted_roles': self.granted_roles,
+            'granted_privileges': self.granted_privileges
+        }
+
+class ForgotPasswordRequest(db.Model):
+    __tablename__ = "forgot_password_requests"
+    __table_args__ = {"schema": "apps"}
+
+    request_id = db.Column(db.Integer, primary_key=True, nullable=False)
+    request_by = db.Column(db.Integer)
+    email = db.Column(db.Text)
+    temporary_password = db.Column(db.Integer)
+    access_token = db.Column(db.Text)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_updated_by = db.Column(db.Integer, nullable=True)
+    last_updated_date = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    is_valid = db.Column(db.Boolean, nullable=True)
+
+    def json(self):
+        return {
+            "request_id": self.request_id,
+            "request_by": self.request_by,
+            "email": self.email,
+            "temporary_password": self.temporary_password,
+            "access_token": self.access_token,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date.isoformat() if self.creation_date else None,
+            "last_updated_by": self.last_updated_by,
+            "last_updated_date": self.last_updated_date.isoformat() if self.last_updated_date else None,
+            "is_valid": self.is_valid,
+        }
+
+class InfoSchemaTable(db.Model):
+    __tablename__ = 'tables'
+    __bind_key__ = 'db_test'
+    __table_args__ = {'schema': 'information_schema', 'extend_existing': True}
+
+    # table_catalog = db.Column(db.String, primary_key=True)
+    table_schema = db.Column(db.String, primary_key=True)
+    table_name = db.Column(db.String, primary_key=True)
+    # table_type = db.Column(db.String)
+
+    def json(self):
+        return {
+            # 'table_catalog': self.table_catalog,
+            'table_schema': self.table_schema,
+            'table_name': self.table_name,
+            # 'table_type': self.table_type
+        }
+
+class InfoSchemaColumn(db.Model):
+    __tablename__ = 'columns'
+    __bind_key__ = 'db_test'
+    __table_args__ = {'schema': 'information_schema', 'extend_existing': True}
+
+    # table_catalog = db.Column(db.String, primary_key=True)
+    table_schema = db.Column(db.String, primary_key=True)
+    table_name = db.Column(db.String, primary_key=True)
+    column_name = db.Column(db.String, primary_key=True)
+    # ordinal_position = db.Column(db.Integer)
+    column_default = db.Column(db.String)
+    is_nullable = db.Column(db.String)
+    data_type = db.Column(db.String)
+
+    def json(self):
+        return {
+            # 'table_catalog': self.table_catalog,
+            'table_schema': self.table_schema,
+            'table_name': self.table_name,
+            'column_name': self.column_name,
+            # 'ordinal_position': self.ordinal_position,
+            'column_default': self.column_default,
+            'is_nullable': self.is_nullable,
+            'data_type': self.data_type
+        }

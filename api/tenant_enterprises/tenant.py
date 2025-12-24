@@ -21,7 +21,7 @@ from utils.auth import role_required
 
 
 # Create a tenant
-@tenant_enterprise_bp.route('/tenants', methods=['POST'])
+@tenant_enterprise_bp.route('/def_tenants', methods=['POST'])
 @jwt_required()
 def create_tenant():
     try:
@@ -52,14 +52,26 @@ def create_tenant():
        
 
 # Get all tenants
-@tenant_enterprise_bp.route('/tenants', methods=['GET'])
+
+
+@tenant_enterprise_bp.route('/def_tenants', methods=['GET'])
 @jwt_required()
 def get_tenants():
     try:
-        tenants = DefTenant.query.order_by(DefTenant.tenant_id.desc()).all()
-        return make_response(jsonify([tenant.json() for tenant in tenants]))
+        tenants = DefTenant.query.order_by(
+            DefTenant.tenant_id.desc()
+        ).all()
+
+        return make_response(jsonify({
+            "result": [tenant.json() for tenant in tenants]
+        }), 200)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error getting Tenants", "error": str(e)}), 500)
+        return make_response(jsonify({
+            "message": "Error getting Tenants",
+            "error": str(e)
+        }), 500)
+
 
 @tenant_enterprise_bp.route('/tenants/v1', methods=['GET'])
 def get_tenants_v1():
@@ -120,7 +132,6 @@ def search_tenants(page, limit):
 
 @tenant_enterprise_bp.route('/tenants/<int:tenant_id>', methods=['GET'])
 @jwt_required()
-@role_required()
 def get_tenant(tenant_id):
     try:
         tenant = DefTenant.query.filter_by(tenant_id=tenant_id).first()
@@ -133,10 +144,14 @@ def get_tenant(tenant_id):
 
 
 # Update a tenant
-@tenant_enterprise_bp.route('/tenants/<int:tenant_id>', methods=['PUT'])
+@tenant_enterprise_bp.route('/def_tenants', methods=['PUT'])
 @jwt_required()
-def update_tenant(tenant_id):
+def update_tenant():
     try:
+        tenant_id = request.args.get('tenant_id', type=int)
+        if not tenant_id:
+            return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
+
         tenant = DefTenant.query.filter_by(tenant_id=tenant_id).first()
         if tenant:
             data = request.get_json()
@@ -152,10 +167,14 @@ def update_tenant(tenant_id):
 
 
 # Delete a tenant
-@tenant_enterprise_bp.route('/tenants/<int:tenant_id>', methods=['DELETE'])
+@tenant_enterprise_bp.route('/def_tenants', methods=['DELETE'])
 @jwt_required()
-def delete_tenant(tenant_id):
+def delete_tenant():
     try:
+        tenant_id = request.args.get('tenant_id', type=int)
+        if not tenant_id:
+            return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
+
         user = DefTenant.query.filter_by(tenant_id=tenant_id).first()
         if user:
             db.session.delete(user)
@@ -164,12 +183,7 @@ def delete_tenant(tenant_id):
         return make_response(jsonify({"message": "Tenant not found"}), 404)
     except Exception as e:
         return make_response(jsonify({"message": "Error deleting tenant", "error": str(e)}), 500)
-
-
-
-
-# DELETE ALL TENANT
-
+    
 @tenant_enterprise_bp.route('/tenants/cascade_delete', methods=['DELETE'])
 @jwt_required()
 def delete_tenant_and_related():

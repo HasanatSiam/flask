@@ -55,7 +55,7 @@ def create_role():
 
 
 @rbac_bp.route('/def_roles', methods=['GET'])
-# @jwt_required()
+@jwt_required()
 def get_roles():
     try:
         role_id = request.args.get("role_id", type=int)
@@ -139,5 +139,4 @@ def delete_role():
             'error': str(e),
             'message': 'Error deleting role'
         }), 500)
-
 
