@@ -780,6 +780,32 @@ class DefGlobalConditionLogicAttribute(db.Model):
         }
     
 
+class DefDataSourceApplicationType(db.Model):
+    __tablename__ = 'def_data_source_application_types'
+    __table_args__ = {'schema': 'apps'}
+
+    def_application_type_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    application_type = db.Column(db.String(50), nullable=False)
+    version = db.Column(db.String(50))
+    description = db.Column(db.String(250))
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            "def_application_type_id": self.def_application_type_id,
+            "application_type": self.application_type,
+            "version": self.version,
+            "description": self.description,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date,
+            "last_updated_by": self.last_updated_by,
+            "last_update_date": self.last_update_date
+        }
+
+
 class DefDataSource(db.Model):
     __tablename__ = 'def_data_sources'
     __table_args__ = {'schema': 'apps'}
@@ -817,7 +843,47 @@ class DefDataSource(db.Model):
             "last_update_date": self.last_update_date
         }
 
+
+class DefDataSourceConnection(db.Model):
+    __tablename__ = 'def_data_source_connections'
+    __table_args__ = {'schema': 'apps'}
+
+    def_connection_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    def_data_source_id = db.Column(db.Integer, db.ForeignKey('apps.def_data_sources.def_data_source_id'))
+    connection_type = db.Column(db.String(50), nullable=False)
+    host = db.Column(db.String(255))
+    port = db.Column(db.Integer)
+    database_name = db.Column(db.String(255))
+    username = db.Column(db.String(255))
+    password = db.Column(db.Text) 
+    additional_params = db.Column(JSONB, default=dict)
+    is_active = db.Column(db.Boolean, default=True)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            "def_connection_id": self.def_connection_id,
+            "def_data_source_id": self.def_data_source_id,
+            "connection_type": self.connection_type,
+            "host": self.host,
+            "port": self.port,
+            "database_name": self.database_name,
+            "username": self.username,
+            "additional_params": self.additional_params,
+            "is_active": self.is_active,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date,
+            "last_updated_by": self.last_updated_by,
+            "last_update_date": self.last_update_date
+        }
+
+
+
 class DefAccessPoint(db.Model):
+
     __tablename__ = "def_access_points"
     __table_args__ = {"schema": "apps"}
 
