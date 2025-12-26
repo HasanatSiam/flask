@@ -51,7 +51,9 @@ def get_application_types():
         app_type_id = request.args.get('def_application_type_id', type=int)
         if app_type_id:
             app_type = DefDataSourceApplicationType.query.get(app_type_id)
-            return make_response(jsonify({"result": app_type.json()}), 200) if app_type else (jsonify({"message": "Not found"}), 404)
+            if not app_type:
+                return make_response(jsonify({"message": "Not found"}), 404)
+            return make_response(jsonify({"result": app_type.json()}), 200)
 
         # Optional filtering
         filters = []
@@ -84,6 +86,8 @@ def update_application_type():
             return make_response(jsonify({"message": "Not found"}), 404)
 
         data = request.get_json()
+        if not data:
+            return make_response(jsonify({"message": "No JSON payload provided"}), 400)
         
         if 'application_type' in data: app_type.application_type = data['application_type']
         if 'version' in data: app_type.version = data['version']

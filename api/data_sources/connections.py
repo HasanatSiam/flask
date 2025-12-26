@@ -96,6 +96,9 @@ def update_connection():
         if not conn: return make_response(jsonify({"message": "Not found"}), 404)
 
         data = request.get_json()
+        if not data:
+            return make_response(jsonify({"message": "No JSON payload provided"}), 400)
+        
         for field in ['host', 'port', 'database_name', 'username', 'connection_type', 'is_active', 'additional_params', 'def_data_source_id']:
             if field in data: setattr(conn, field, data[field])
         
@@ -134,12 +137,16 @@ def delete_connection():
 @data_sources_bp.route('/def_data_source_connections/test/<int:def_connection_id>', methods=['POST'])
 @jwt_required()
 def test_saved_connection(def_connection_id):
-    conn = DefDataSourceConnection.query.get(def_connection_id)
-    if not conn: return make_response(jsonify({"message": "Not found"}), 404)
+    try:
+        conn = DefDataSourceConnection.query.get(def_connection_id)
+        if not conn: 
+            return make_response(jsonify({"success": False, "message": "Not found"}), 404)
 
-    config = conn.json()
-    config['password'] = conn.password if conn.password else ''
-    
-    success, message = ConnectorManager.test(config) 
-    return make_response(jsonify({"success": success, "message": message}), 200 if success else 400)
+        config = conn.json()
+        config['password'] = conn.password if conn.password else ''
+        
+        success, message = ConnectorManager.test(config) 
+        return make_response(jsonify({"success": success, "message": message}), 200 if success else 400)
+    except Exception as e:
+        return make_response(jsonify({"success": False, "message": str(e)}), 500)
 

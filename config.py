@@ -10,17 +10,17 @@ from datetime import timedelta
 from flask_mail import Mail  
 
 # Load environment variables from the .env file
-# load_dotenv()  
+load_dotenv()  
 
 
 # Define the path where the .env file is stored
-ENV_PATH = "/d01/def/app/server/.server_env"
+# ENV_PATH = "/d01/def/app/server/.server_env"
 
 
-if os.path.exists(ENV_PATH):
-    load_dotenv(ENV_PATH)
-else:
-    print(f"Error: The .env file was not found at {ENV_PATH}")
+# if os.path.exists(ENV_PATH):
+#     load_dotenv(ENV_PATH)
+# else:
+#     print(f"Error: The .env file was not found at {ENV_PATH}")
 
 # Initialize Flask-Mail globally
 mail = Mail()
