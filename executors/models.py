@@ -786,7 +786,7 @@ class DefDataSourceApplicationType(db.Model):
 
     def_application_type_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     application_type = db.Column(db.String(50), nullable=False)
-    version = db.Column(db.String(50))
+    versions = db.Column(JSONB, default=list)
     description = db.Column(db.String(250))
     created_by = db.Column(db.Integer)
     creation_date = db.Column(db.DateTime, default=datetime.utcnow)
@@ -797,7 +797,7 @@ class DefDataSourceApplicationType(db.Model):
         return {
             "def_application_type_id": self.def_application_type_id,
             "application_type": self.application_type,
-            "version": self.version,
+            "versions": self.versions,
             "description": self.description,
             "created_by": self.created_by,
             "creation_date": self.creation_date,
