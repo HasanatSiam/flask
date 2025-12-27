@@ -120,16 +120,27 @@ def update_application_type():
 @jwt_required()
 def delete_application_type():
     try:
-        app_type_id = request.args.get('def_application_type_id', type=int)
-        if not app_type_id:
-             return make_response(jsonify({"message": "def_application_type_id is required"}), 400)
+        data = request.get_json(silent=True)
+        if not data or 'def_application_type_ids' not in data:
+            return make_response(jsonify({"message": "def_application_type_ids is required in JSON body"}), 400)
 
-        app_type = DefDataSourceApplicationType.query.get(app_type_id)
-        if not app_type: 
-            return make_response(jsonify({"message": "Not found"}), 404)
+        ids_to_delete = data.get('def_application_type_ids')
+        if not isinstance(ids_to_delete, list):
+            return make_response(jsonify({"message": "def_application_type_ids must be a list"}), 400)
+
+        if not ids_to_delete:
+             return make_response(jsonify({"message": "def_application_type_ids list cannot be empty"}), 400)
+
+        # Efficiently delete multiple records
+        deleted_count = DefDataSourceApplicationType.query.filter(
+            DefDataSourceApplicationType.def_application_type_id.in_(ids_to_delete)
+        ).delete(synchronize_session=False)
         
-        db.session.delete(app_type)
         db.session.commit()
+        
+        if deleted_count == 0:
+            return make_response(jsonify({"message": "No matching records found"}), 404)
+        
         return make_response(jsonify({"message": "Deleted successfully"}), 200)
 
     except Exception as e:
