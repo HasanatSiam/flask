@@ -35,6 +35,11 @@ Ensure you have the following installed:
 - Python 3.8+
 - Redis Server
 - PostgreSQL
+- **Git LFS**: Required for downloading large driver files located in the `drivers/` folder.
+  ```bash
+  git lfs install
+  git lfs pull
+  ```
 
 ## Installation
 
@@ -56,6 +61,13 @@ Ensure you have the following installed:
 3.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
+    ```
+
+4.  **Install local drivers:**
+    Some connectors (like ServiceNow) require proprietary drivers located in the `drivers/` folder. Install them using:
+    ```bash
+    # Windows
+    pip install drivers/cdata_servicenow_connector-25.0.9454-cp311-cp311-win_amd64.whl
     ```
 
 ## Configuration
