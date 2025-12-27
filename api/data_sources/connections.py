@@ -77,11 +77,25 @@ def get_connections():
         if def_data_source_id:
             query = query.filter(DefDataSourceConnection.def_data_source_id == def_data_source_id)
 
-        connections = query.order_by(DefDataSourceConnection.def_connection_id.desc()).all()
+        query = query.order_by(DefDataSourceConnection.def_connection_id.desc())
+
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [c.json() for c in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        connections = query.all()
         
         return make_response(jsonify({
-            "result": [c.json() for c in connections],
-            "total": len(connections)
+            "result": [c.json() for c in connections]
         }), 200)
     except Exception as e:
         return make_response(jsonify({"message": str(e)}), 500)

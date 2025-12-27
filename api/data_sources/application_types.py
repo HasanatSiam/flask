@@ -14,18 +14,17 @@ def create_application_type():
         if not data:
             return make_response(jsonify({"message": "No JSON payload provided"}), 400)
         
-        # Check if type already exists with same version
+        # Check if type already exists
         existing = DefDataSourceApplicationType.query.filter_by(
-            application_type=data.get('application_type'),
-            version=data.get('version')
+            application_type=data.get('application_type')
         ).first()
         
         if existing:
-            return make_response(jsonify({"message": "Application type with this version already exists"}), 400)
+            return make_response(jsonify({"message": "Application type already exists"}), 400)
         
         app_type = DefDataSourceApplicationType(
             application_type=data.get('application_type'),
-            version=data.get('version'),
+            versions=data.get('versions', []),
             description=data.get('description'),
             created_by=get_jwt_identity(),
             creation_date=datetime.utcnow(),
@@ -63,9 +62,23 @@ def get_application_types():
         query = DefDataSourceApplicationType.query
         if filters:
             query = query.filter(*filters)
-            
-        results = query.order_by(DefDataSourceApplicationType.def_application_type_id.desc()).all()
+
+        query = query.order_by(DefDataSourceApplicationType.def_application_type_id.desc())
         
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [x.json() for x in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        results = query.all()
         return make_response(jsonify({
             "result": [x.json() for x in results]
         }), 200)
@@ -90,7 +103,7 @@ def update_application_type():
             return make_response(jsonify({"message": "No JSON payload provided"}), 400)
         
         if 'application_type' in data: app_type.application_type = data['application_type']
-        if 'version' in data: app_type.version = data['version']
+        if 'versions' in data: app_type.versions = data['versions']
         if 'description' in data: app_type.description = data['description']
         
         app_type.last_updated_by = get_jwt_identity()

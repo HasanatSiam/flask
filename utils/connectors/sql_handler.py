@@ -1,8 +1,3 @@
-"""
-PostgreSQL Handler
-==================
-Standard handler for PostgreSQL databases.
-"""
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine, text
 
