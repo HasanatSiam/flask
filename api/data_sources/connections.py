@@ -65,16 +65,19 @@ def create_connection():
 def get_connections():
     try:
         conn_id = request.args.get('def_connection_id', type=int)
+        def_data_source_id = request.args.get('def_data_source_id', type=int)
+
         if conn_id:
             conn = DefDataSourceConnection.query.get(conn_id)
             if not conn:
                 return make_response(jsonify({"message": "Not found"}), 404)
-            # Decrypt password for display? typically no, or mask it.
-            # The .json() method doesn't return password usually.
             return make_response(jsonify({"result": conn.json()}), 200)
 
-        # Return all connections (no pagination)
-        connections = DefDataSourceConnection.query.order_by(DefDataSourceConnection.def_connection_id.desc()).all()
+        query = DefDataSourceConnection.query
+        if def_data_source_id:
+            query = query.filter(DefDataSourceConnection.def_data_source_id == def_data_source_id)
+
+        connections = query.order_by(DefDataSourceConnection.def_connection_id.desc()).all()
         
         return make_response(jsonify({
             "result": [c.json() for c in connections],
