@@ -1,10 +1,50 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
-from sqlalchemy import text, inspect, and_, case
+from sqlalchemy import text, inspect, and_, case, create_engine
+from urllib.parse import quote_plus
 from executors.extensions import db
-from executors.models import InfoSchemaTable, InfoSchemaColumn
+from executors.models import InfoSchemaTable, InfoSchemaColumn, DefDataSource, DefDataSourceConnection
 
 from . import data_modeling_bp
+
+
+def _get_engine_for_datasource(datasource_name):
+    """
+    Helper function to get SQLAlchemy engine for a specific datasource.
+    Looks up datasource by name and creates engine from connection details.
+    """
+    # Find datasource by name
+    datasource = DefDataSource.query.filter_by(datasource_name=datasource_name).first()
+    if not datasource:
+        raise ValueError(f"Datasource '{datasource_name}' not found")
+    
+    # Get active connection for this datasource
+    connection = DefDataSourceConnection.query.filter_by(
+        def_data_source_id=datasource.def_data_source_id,
+        is_active=True
+    ).order_by(DefDataSourceConnection.def_connection_id.desc()).first()
+    
+    if not connection:
+        raise ValueError(f"No active connection found for datasource '{datasource_name}'")
+    
+    # Build connection URI (currently supports PostgreSQL)
+    if connection.connection_type.lower() == 'postgresql':
+        host = connection.host or 'localhost'
+        port = connection.port or 5432
+        database = connection.database_name or ''
+        username = quote_plus(connection.username or '')
+        password = quote_plus(connection.password or '')
+        
+        uri = f"postgresql+psycopg2://{username}:{password}@{host}:{port}/{database}"
+        
+        # Add SSL mode if specified
+        if connection.additional_params and 'sslmode' in connection.additional_params:
+            uri += f"?sslmode={connection.additional_params['sslmode']}"
+        
+        return create_engine(uri, pool_pre_ping=True)
+    else:
+        raise ValueError(f"Unsupported connection type: {connection.connection_type}")
+
 
 @data_modeling_bp.route('/tables', methods=['GET'])
 @jwt_required()
@@ -158,4 +198,141 @@ def get_table_metadata_v1(table_name):
             "message": "Failed to fetch table metadata",
             "error": str(e)
         }), 500)
+
+
+@data_modeling_bp.route('/datasource/metadata', methods=['GET'])
+@jwt_required()
+def get_datasource_metadata():
+    """
+    Get schemas and tables for a specific datasource.
+    Query params: datasource_name (required)
+    """
+    try:
+        datasource_name = request.args.get('datasource_name')
+        if not datasource_name:
+            return make_response(jsonify({
+                'message': 'datasource_name query parameter is required'
+            }), 400)
+
+        # Get engine for the datasource
+        engine = _get_engine_for_datasource(datasource_name)
+        inspector = inspect(engine)
+
+        # Get all schemas
+        schemas = inspector.get_schema_names()
+        system_schemas = {'information_schema', 'pg_catalog', 'pg_toast'}
+
+        # Filter out system schemas
+        schemas = [
+            s for s in schemas
+            if s not in system_schemas and not s.startswith('pg_toast_')
+        ]
+
+        all_data = []
+        total_count = 0
+
+        for schema in schemas:
+            tables = inspector.get_table_names(schema=schema)
+            views = inspector.get_view_names(schema=schema)
+            objects = sorted(tables + views)
+
+            if objects:
+                all_data.append({
+                    "schema": schema,
+                    "tables": objects
+                })
+                total_count += len(objects)
+
+        # Dispose engine
+        engine.dispose()
+
+        return make_response(jsonify({
+            "datasource_name": datasource_name,
+            "schemas": all_data,
+            "total_tables": total_count
+        }), 200)
+
+    except ValueError as ve:
+        return make_response(jsonify({
+            "message": str(ve)
+        }), 404)
+    except Exception as e:
+        return make_response(jsonify({
+            "message": "Failed to fetch datasource metadata",
+            "error": str(e)
+        }), 500)
+
+
+@data_modeling_bp.route('/table/columns', methods=['GET'])
+@jwt_required()
+def get_table_columns():
+    """
+    Get column metadata for a specific table.
+    Query params: 
+        - table_name (required)
+        - datasource_name (required)
+        - schema (optional, default='public')
+    """
+    try:
+        table_name = request.args.get('table_name')
+        datasource_name = request.args.get('datasource_name')
+        
+        if not table_name:
+            return make_response(jsonify({
+                'message': 'table_name query parameter is required'
+            }), 400)
+        
+        if not datasource_name:
+            return make_response(jsonify({
+                'message': 'datasource_name query parameter is required'
+            }), 400)
+
+        schema_name = request.args.get('schema', 'public')
+
+        # Get engine for the datasource
+        engine = _get_engine_for_datasource(datasource_name)
+        inspector = inspect(engine)
+
+        # Check table or view existence
+        if not inspector.has_table(table_name, schema=schema_name):
+            views = inspector.get_view_names(schema=schema_name)
+            if table_name not in views:
+                engine.dispose()
+                return make_response(jsonify({
+                    "message": f"Table or View '{table_name}' not found in schema '{schema_name}'"
+                }), 404)
+
+        # Get columns
+        columns = inspector.get_columns(table_name, schema=schema_name)
+
+        column_details = []
+        for col in columns:
+            column_details.append({
+                "name": col['name'],
+                "type": str(col['type']),
+                "nullable": col.get('nullable'),
+                "default": str(col.get('default')) if col.get('default') else None,
+                "primary_key": col.get('primary_key', False)
+            })
+
+        # Dispose engine
+        engine.dispose()
+
+        return make_response(jsonify({
+            "datasource_name": datasource_name,
+            "schema": schema_name,
+            "table": table_name,
+            "columns": column_details
+        }), 200)
+
+    except ValueError as ve:
+        return make_response(jsonify({
+            "message": str(ve)
+        }), 404)
+    except Exception as e:
+        return make_response(jsonify({
+            "message": "Failed to fetch table columns",
+            "error": str(e)
+        }), 500)
+
 
