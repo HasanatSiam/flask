@@ -4,7 +4,9 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import or_, create_engine, text
 from executors.extensions import db
 from executors.models import (
-    DefDataSource
+    DefDataSource, DefDataSourceConnection, DefAccessPoint, DefAccessEntitlementElement,
+    DefAccessModel, DefAccessModelLogic, DefAccessModelLogicAttribute,
+    DefGlobalCondition, DefGlobalConditionLogic, DefGlobalConditionLogicAttribute
 )
 
 from . import data_sources_bp
@@ -130,3 +132,87 @@ def delete_def_data_source():
     except Exception as e:
         return make_response(jsonify({'message': 'Error deleting data source', 'error': str(e)}), 500)
 
+@data_sources_bp.route('/def_data_sources/cascade', methods=['DELETE'])
+@jwt_required()
+def cascade_delete_def_data_source():
+    """
+    Delete a datasource and all its related records across the system.
+    Related records include:
+    - Connections
+    - Access Points & Entitlement Elements
+    - Access Models, Logics & Attributes
+    - Global Conditions, Logics & Attributes
+    """
+    try:
+        def_data_source_id = request.args.get('def_data_source_id', type=int)
+        if not def_data_source_id:
+            return make_response(jsonify({'message': 'def_data_source_id is required'}), 400)
+
+        # 1. Find the Datasource record
+        ds = DefDataSource.query.get(def_data_source_id)
+        if not ds:
+            return make_response(jsonify({'message': 'Data source not found'}), 404)
+
+        datasource_name = ds.datasource_name
+        
+        # 2. Delete Access Models related data
+        access_models = DefAccessModel.query.filter_by(datasource_name=datasource_name).all()
+        for am in access_models:
+            logics = DefAccessModelLogic.query.filter_by(def_access_model_id=am.def_access_model_id).all()
+            for logic in logics:
+                # Delete logic attributes
+                DefAccessModelLogicAttribute.query.filter_by(
+                    def_access_model_logic_id=logic.def_access_model_logic_id
+                ).delete()
+                # Delete logic
+                db.session.delete(logic)
+            # Delete model
+            db.session.delete(am)
+
+        # 3. Delete Global Conditions related data
+        global_conditions = DefGlobalCondition.query.filter_by(datasource=datasource_name).all()
+        for gc in global_conditions:
+            logics = DefGlobalConditionLogic.query.filter_by(
+                def_global_condition_id=gc.def_global_condition_id
+            ).all()
+            for logic in logics:
+                # Delete logic attributes
+                DefGlobalConditionLogicAttribute.query.filter_by(
+                    def_global_condition_logic_id=logic.def_global_condition_logic_id
+                ).delete()
+                # Delete logic
+                db.session.delete(logic)
+            # Delete condition
+            db.session.delete(gc)
+
+        # 4. Delete Access Points related data
+        access_points = DefAccessPoint.query.filter_by(def_data_source_id=def_data_source_id).all()
+        for ap in access_points:
+            # Delete entitlement elements (DB has cascade, but doing it explicitly for safety)
+            DefAccessEntitlementElement.query.filter_by(
+                def_access_point_id=ap.def_access_point_id
+            ).delete()
+            # Delete access point
+            db.session.delete(ap)
+
+        # 5. Delete Connections
+        DefDataSourceConnection.query.filter_by(def_data_source_id=def_data_source_id).delete()
+
+        # 6. Delete the Datasource itself
+        ds_json = ds.json()
+        db.session.delete(ds)
+
+        # Commit all deletions in a single transaction
+        db.session.commit()
+
+        return make_response(jsonify({
+            'message': 'Datasource and all related data deleted successfully',
+            'result': ds_json
+        }), 200)
+
+    except Exception as e:
+        db.session.rollback()
+        return make_response(jsonify({
+            'message': 'Error performing cascade delete',
+            'error': str(e)
+        }), 500)

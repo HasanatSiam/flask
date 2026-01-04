@@ -1,6 +1,8 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from sqlalchemy import text, inspect, and_, case, create_engine
+import datetime
+from decimal import Decimal
 from urllib.parse import quote_plus
 from executors.extensions import db
 from executors.models import InfoSchemaTable, InfoSchemaColumn, DefDataSource, DefDataSourceConnection
@@ -44,6 +46,26 @@ def _get_engine_for_datasource(datasource_name):
         return create_engine(uri, pool_pre_ping=True)
     else:
         raise ValueError(f"Unsupported connection type: {connection.connection_type}")
+
+
+def _serialize_data(obj):
+    """
+    Helper to make object JSON serializable.
+    Handles datetime, Decimal, bytes, memoryview, etc.
+    """
+    if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
+        return obj.isoformat()
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, bytes):
+        return obj.hex()
+    elif isinstance(obj, memoryview):
+        return obj.tobytes().hex()
+    elif isinstance(obj, dict):
+        return {k: _serialize_data(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_serialize_data(item) for item in obj]
+    return obj
 
 
 @data_modeling_bp.route('/tables', methods=['GET'])
@@ -248,7 +270,7 @@ def get_datasource_metadata():
 
         return make_response(jsonify({
             "datasource_name": datasource_name,
-            "schemas": all_data,
+            "result": all_data,
             "total_tables": total_count
         }), 200)
 
@@ -322,7 +344,7 @@ def get_table_columns():
             "datasource_name": datasource_name,
             "schema": schema_name,
             "table": table_name,
-            "columns": column_details
+            "result": column_details
         }), 200)
 
     except ValueError as ve:
@@ -334,5 +356,92 @@ def get_table_columns():
             "message": "Failed to fetch table columns",
             "error": str(e)
         }), 500)
+
+
+@data_modeling_bp.route('/table/data', methods=['GET'])
+@jwt_required()
+def get_table_data():
+    """
+    Get all data for a specific table with pagination.
+    Query params: 
+        - table_name (required)
+        - datasource_name (required)
+        - schema (optional, default='public')
+        - page (optional, default=1)
+        - per_page (optional, default=10)
+    """
+    try:
+        table_name = request.args.get('table_name')
+        datasource_name = request.args.get('datasource_name')
+        
+        if not table_name:
+            return make_response(jsonify({
+                'message': 'table_name query parameter is required'
+            }), 400)
+        
+        if not datasource_name:
+            return make_response(jsonify({
+                'message': 'datasource_name query parameter is required'
+            }), 400)
+
+        schema_name = request.args.get('schema', 'public')
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 10))
+        offset = (page - 1) * per_page
+
+        # Get engine for the datasource
+        engine = _get_engine_for_datasource(datasource_name)
+        inspector = inspect(engine)
+
+        # Check table or view existence
+        if not inspector.has_table(table_name, schema=schema_name):
+            views = inspector.get_view_names(schema=schema_name)
+            if table_name not in views:
+                engine.dispose()
+                return make_response(jsonify({
+                    "message": f"Table or View '{table_name}' not found in schema '{schema_name}'"
+                }), 404)
+
+        # Build paginated query
+        # Note: Using text() for raw SQL as we don't have model mapping for external tables
+        count_query = text(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"')
+        data_query = text(f'SELECT * FROM "{schema_name}"."{table_name}" LIMIT :limit OFFSET :offset')
+
+        with engine.connect() as connection:
+            # Get total count
+            total_count = connection.execute(count_query).scalar()
+            
+            # Get paginated data
+            result = connection.execute(data_query, {"limit": per_page, "offset": offset})
+            
+            # Convert result rows to list of dicts and handle serialization
+            data = []
+            for row in result:
+                row_dict = dict(row._mapping)
+                data.append(_serialize_data(row_dict))
+
+        # Dispose engine
+        engine.dispose()
+
+        return make_response(jsonify({
+            "datasource_name": datasource_name,
+            "schema": schema_name,
+            "table": table_name,
+            "page": page,
+            "per_page": per_page,
+            "total_count": total_count,
+            "result": data
+        }), 200)
+
+    except ValueError as ve:
+        return make_response(jsonify({
+            "message": str(ve)
+        }), 404)
+    except Exception as e:
+        return make_response(jsonify({
+            "message": "Failed to fetch table data",
+            "error": str(e)
+        }), 500)
+
 
 
