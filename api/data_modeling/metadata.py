@@ -464,13 +464,16 @@ def get_table_data():
         # Dispose engine
         engine.dispose()
 
+        # Calculate total pages
+        total_pages = (total_count + per_page - 1) // per_page
+
         return make_response(jsonify({
             "datasource_name": datasource_name,
             "schema": schema_name,
             "table": table_name,
             "page": page,
-            "per_page": per_page,
-            "total_count": total_count,
+            "pages": total_pages,
+            "total": total_count,
             "result": data
         }), 200)
 
