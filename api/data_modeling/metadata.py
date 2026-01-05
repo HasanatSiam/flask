@@ -289,25 +289,66 @@ def get_datasource_metadata():
 @jwt_required()
 def get_table_columns():
     """
-    Get column metadata for a specific table.
+    Get column metadata for a specific table or all tables.
     Query params: 
-        - table_name (required)
         - datasource_name (required)
-        - schema (optional, default='public')
+        - table_name (optional) - If provided, returns detailed columns for that table. If omitted, returns list of tables with column names for the datasource.
+        - schema (optional) - Default 'public' if table_name is provided. If table_name is omitted, defaults to all schemas.
     """
     try:
         table_name = request.args.get('table_name')
         datasource_name = request.args.get('datasource_name')
         
-        if not table_name:
-            return make_response(jsonify({
-                'message': 'table_name query parameter is required'
-            }), 400)
-        
         if not datasource_name:
             return make_response(jsonify({
                 'message': 'datasource_name query parameter is required'
             }), 400)
+
+        if not table_name:
+            schema_name = request.args.get('schema')
+            engine = _get_engine_for_datasource(datasource_name)
+            try:
+                inspector = inspect(engine)
+
+                if schema_name:
+                    schemas = [schema_name]
+                else:
+                    all_schemas = inspector.get_schema_names()
+                    system_schemas = {'information_schema', 'pg_catalog', 'pg_toast'}
+                    schemas = [
+                        s for s in all_schemas
+                        if s not in system_schemas and not s.startswith('pg_toast_')
+                    ]
+                
+                result_list = []
+                for s in schemas:
+                    tables = inspector.get_table_names(schema=s)
+                    for t in tables:
+                        cols = inspector.get_columns(t, schema=s)
+                        col_names = [c['name'] for c in cols]
+                        
+                        entry = {
+                            "table": t,
+                            "columns": col_names
+                        }
+                        if not schema_name:
+                            entry["schema"] = s
+                        
+                        result_list.append(entry)
+
+                response = {
+                    "datasource_name": datasource_name,
+                    "result": result_list
+                }
+                if schema_name:
+                    response["schema"] = schema_name
+                
+                engine.dispose()
+                return make_response(jsonify(response), 200)
+
+            except Exception as e:
+                engine.dispose()
+                raise e
 
         schema_name = request.args.get('schema', 'public')
 
