@@ -1087,7 +1087,102 @@ class DefProcess(db.Model):
             "last_update_date": self.last_update_date
         }
 
+class DefProcessNodeType(db.Model):
+    __tablename__ = 'def_process_node_types'
+    __table_args__ = {'schema': 'apps', 'extend_existing': True}
+    
+    def_node_type_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    shape_name = db.Column(db.String(50), unique=True, nullable=False)
+    display_name = db.Column(db.String(100))
+    behavior = db.Column(db.String(50), nullable=False)
+    requires_step_function = db.Column(db.String(1), default='N')
+    description = db.Column(db.Text)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.TIMESTAMP(timezone=True), server_default=func.current_timestamp())
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
 
+    def json(self):
+        return {
+            'def_node_type_id': self.def_node_type_id,
+            'shape_name': self.shape_name,
+            'display_name': self.display_name,
+            'behavior': self.behavior,
+            'requires_step_function': self.requires_step_function,
+            'description': self.description,
+            'created_by': self.created_by,
+            'creation_date': self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by': self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
+        }
+
+class DefProcessExecution(db.Model):
+    __tablename__ = 'def_process_executions'
+    __table_args__ = {'schema': 'apps', 'extend_existing': True}
+    
+    def_process_execution_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    process_id = db.Column(db.Integer, db.ForeignKey('apps.def_processes.process_id'))
+    execution_status = db.Column(db.String(50), default='RUNNING')
+    input_data = db.Column(JSONB)
+    output_data = db.Column(JSONB)
+    error_message = db.Column(db.Text)
+    execution_start_date = db.Column(db.TIMESTAMP(timezone=True), server_default=func.current_timestamp())
+    execution_end_date = db.Column(db.TIMESTAMP(timezone=True))
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.TIMESTAMP(timezone=True), server_default=func.current_timestamp())
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    def json(self):
+        return {
+            'def_process_execution_id': self.def_process_execution_id,
+            'process_id': self.process_id,
+            'execution_status': self.execution_status,
+            'input_data': self.input_data,
+            'output_data': self.output_data,
+            'error_message': self.error_message,
+            'execution_start_date': self.execution_start_date.isoformat() if self.execution_start_date else None,
+            'execution_end_date': self.execution_end_date.isoformat() if self.execution_end_date else None,
+            'created_by': self.created_by,
+            'creation_date': self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by': self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
+        }
+
+class DefProcessExecutionStep(db.Model):
+    __tablename__ = 'def_process_execution_steps'
+    __table_args__ = {'schema': 'apps'}
+    
+    def_execution_step_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    def_process_execution_id = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.def_process_execution_id'))
+    node_id = db.Column(db.String(100))
+    node_label = db.Column(db.String(255))
+    status = db.Column(db.String(50))
+    result = db.Column(JSONB)
+    error_message = db.Column(db.Text)
+    execution_start_date = db.Column(db.DateTime(timezone=True), default=func.now())
+    execution_end_date = db.Column(db.DateTime(timezone=True))
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime(timezone=True), default=func.now())
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    def json(self):
+        return {
+            'def_execution_step_id': self.def_execution_step_id,
+            'def_process_execution_id': self.def_process_execution_id,
+            'node_id': self.node_id,
+            'node_label': self.node_label,
+            'status': self.status,
+            'result': self.result,
+            'error_message': self.error_message,
+            'execution_start_date': self.execution_start_date.isoformat() if self.execution_start_date else None,
+            'execution_end_date': self.execution_end_date.isoformat() if self.execution_end_date else None,
+            'created_by': self.created_by,
+            'creation_date': self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by': self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
+        }
 
 # class DefNotification(db.Model):
 #     __tablename__ = 'def_notifications'

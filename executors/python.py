@@ -25,7 +25,7 @@ def execute(self, *args, **kwargs):
         sys.stdout = io.StringIO()
 
         # Read & Execute the script
-        with open(full_script_path, 'r') as file:
+        with open(full_script_path, 'r', encoding='utf-8') as file:
             script_content = file.read()
 
         exec_globals = {"__builtins__": __builtins__}  # Safe execution context
