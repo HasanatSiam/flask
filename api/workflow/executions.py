@@ -1,0 +1,147 @@
+import json
+import time
+from flask import request, jsonify, Response, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from executors.extensions import db
+from executors.models import DefProcessExecution, DefProcessExecutionStep
+from . import workflow_bp
+
+@workflow_bp.route('/workflow/executions', methods=['GET'])
+@jwt_required()
+def get_workflow_executions():
+    try:
+        process_id = request.args.get('process_id')
+        def_process_execution_id = request.args.get('def_process_execution_id')
+        
+        if def_process_execution_id:
+            execution = DefProcessExecution.query.get(def_process_execution_id)
+            if not execution:
+                return jsonify({"error": "Execution not found"}), 404
+            # Return as a list for consistency with this endpoint's format
+            return jsonify({"result": [execution.json()]}), 200
+
+        if not process_id:
+             return jsonify({"error": "Missing process_id query parameter"}), 400
+             
+        executions = DefProcessExecution.query.filter_by(process_id=process_id)\
+            .order_by(DefProcessExecution.execution_start_date.desc()).all()
+            
+        return jsonify({"result": [e.json() for e in executions]}), 200
+        
+    except Exception as e:
+        return jsonify({"message": "Error fetching executions", "error": str(e)}), 500
+
+
+@workflow_bp.route('/workflow/execution_steps', methods=['GET'])
+@jwt_required()
+def get_workflow_execution_steps():
+    try:
+        def_process_execution_id = request.args.get('def_process_execution_id')
+        node_id = request.args.get('node_id')
+        
+        if not def_process_execution_id:
+            return jsonify({"error": "Missing def_process_execution_id query parameter"}), 400
+            
+        query = DefProcessExecutionStep.query.filter_by(def_process_execution_id=def_process_execution_id)
+        
+        if node_id:
+            query = query.filter_by(node_id=node_id)
+            
+        steps = query.order_by(DefProcessExecutionStep.execution_start_date.asc()).all()
+            
+        return jsonify({"result": [s.json() for s in steps]}), 200
+        
+    except Exception as e:
+        return jsonify({"message": "Error fetching execution steps", "error": str(e)}), 500
+
+
+@workflow_bp.route('/workflow/execution_stream/<int:execution_id>', methods=['GET'])
+@jwt_required(optional=True, locations=['headers', 'query_string'])
+def stream_execution(execution_id):
+    """
+    SSE endpoint for real-time workflow execution status.
+    
+    Streams events:
+    - type: 'step' - specific step update (running, completed, failed)
+    - type: 'status' - Overall execution status update
+    - type: 'complete' - Final result when workflow finishes
+    """
+    # Verify we have a valid identity
+    current_user = get_jwt_identity()
+    if not current_user:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    # Capture the app for use inside the generator
+    app = current_app._get_current_object()
+    
+    def generate():
+        # Track state of steps we've seen: {step_id: status}
+        last_step_states = {}
+        max_wait_seconds = 3600  # 1 hour timeout
+        start_time = time.time()
+        
+        while True:
+            # Calculate elapsed time
+            elapsed = time.time() - start_time
+            if elapsed > max_wait_seconds:
+                yield f"data: {json.dumps({'type': 'timeout', 'message': 'Stream timeout'})}\n\n"
+                break
+            
+            try:
+                with app.app_context():
+                    db.session.expire_all()
+                    
+                    execution = DefProcessExecution.query.get(execution_id)
+                    if not execution:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not found'})}\n\n"
+                        break
+                    
+                    # Get all steps (we need to check for updates to existing steps too)
+                    steps = DefProcessExecutionStep.query.filter_by(
+                        def_process_execution_id=execution_id
+                    ).order_by(DefProcessExecutionStep.execution_start_date.asc()).all()
+                    
+                    # capture data
+                    steps_data = [step.json() for step in steps]
+                    execution_status = execution.execution_status
+                    execution_data = execution.json()
+                
+                # Check for new or updated steps
+                for step in steps_data:
+                    step_id = step['def_execution_step_id']
+                    status = step['status']
+                    
+                    # If new step OR status changed
+                    if step_id not in last_step_states or last_step_states[step_id] != status:
+                        yield f"data: {json.dumps({'type': 'step', 'data': step})}\n\n"
+                        last_step_states[step_id] = status
+
+                # Check completion
+                if execution_status not in ['RUNNING', 'QUEUED']:
+                    yield f"data: {json.dumps({'type': 'complete', 'data': execution_data})}\n\n"
+                    break
+                
+                # Heartbeat / Keepalive
+                yield f"data: {json.dumps({'type': 'heartbeat', 'status': execution_status})}\n\n"
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                time.sleep(1) # prevent rapid error loops
+                
+            # Polling interval
+            if elapsed < 60:
+                time.sleep(0.5)
+            elif elapsed < 300:
+                time.sleep(2.0)
+            else:
+                time.sleep(5.0)
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
+        }
+    )

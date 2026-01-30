@@ -97,7 +97,7 @@ class WorkflowEngine:
         node_type_config = DefProcessNodeType.query.filter_by(shape_name=shape_name).first()
         behavior = node_type_config.behavior if node_type_config else 'TASK' # Default to TASK if unknown
 
-        logger.info(f"Executing: {label} (shape={shape_name}, behavior={behavior})")
+        logger.debug(f"Executing: {label} (shape={shape_name}, behavior={behavior})")
 
         # Extract predefined attributes from node and merge into context
         predefined_attributes = data.get('attributes', [])
@@ -122,7 +122,7 @@ class WorkflowEngine:
         
         # Empty step_function - skip
         if not step_function:
-            logger.info(f"Skipping {label} - no step_function")
+            logger.debug(f"Skipping {label} - no step_function")
             return {'status': 'skipped', 'node_id': node_id}
         
         # Lookup task
@@ -221,35 +221,44 @@ class WorkflowEngine:
             start = self._find_start()
             if not start:
                 raise WorkflowError("No Start node found")
-            
-            execution_log = []
+
             current_nodes = [start]
             
             while current_nodes:
                 node = current_nodes.pop(0)
                 
-                # Execute step
+                # Create step record (RUNNING)
                 step_start_date = datetime.utcnow()
-                result = self._execute_step(node, context)
-                step_end_date = datetime.utcnow()
-                
-                execution_log.append(result)
-
-                # Persist step to DB
                 step_record = DefProcessExecutionStep(
                     def_process_execution_id=execution_record.def_process_execution_id,
                     node_id=node.get('id'),
                     node_label=node.get('data', {}).get('label', node.get('id')),
-                    status=result.get('status'),
-                    result=result.get('result') if result.get('status') == 'completed' else None,
-                    error_message=result.get('error'),
+                    status='RUNNING',
                     execution_start_date=step_start_date,
-                    execution_end_date=step_end_date,
                     created_by=user_id,
                     last_updated_by=user_id
                 )
                 db.session.add(step_record)
                 db.session.commit()
+
+                # Execute step
+                try:
+                    result = self._execute_step(node, context)
+                except Exception as e:
+                    result = {'status': 'failed', 'error': str(e), 'node_id': node.get('id')}
+
+                step_end_date = datetime.utcnow()
+
+                # Update step record
+                step_record.status = result.get('status')
+                if result.get('status') == 'completed':
+                    step_record.result = result.get('result')
+                step_record.error_message = result.get('error')
+                step_record.execution_end_date = step_end_date
+                
+                db.session.commit()
+            
+
                 
                 if on_task_complete:
                     on_task_complete(result)

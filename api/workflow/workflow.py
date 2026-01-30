@@ -1,115 +1,18 @@
 """
 Workflow API Endpoints
 
-CRUD for workflows + run execution.
+CRUD for workflows.
 """
 
-from flask import request, jsonify, make_response
+from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 
 from executors.extensions import db
-from executors.models import DefProcess, DefProcessExecution, DefProcessNodeType, DefProcessExecutionStep
+from executors.models import DefProcess
 from workflow_engine import WorkflowEngine, WorkflowError
 
 from . import workflow_bp
-
-
-@workflow_bp.route('/workflow/node_types', methods=['GET'])
-@jwt_required()
-def get_node_types():
-    try:
-        def_node_type_id = request.args.get('def_node_type_id')
-        if def_node_type_id:
-            node_type = DefProcessNodeType.query.get(def_node_type_id)
-            if not node_type:
-                return jsonify({"error": "Node type not found"}), 404
-            return jsonify({"result": node_type.json()}), 200
-            
-        node_types = DefProcessNodeType.query.all()
-        return jsonify({"result": [n.json() for n in node_types]}), 200
-    except Exception as e:
-        return jsonify({"message": "Error getting node types", "error": str(e)}), 500
-
-
-@workflow_bp.route('/workflow/node_types', methods=['POST'])
-@jwt_required()
-def create_node_type():
-    try:
-        data = request.json
-        shape_name = data.get('shape_name')
-        behavior = data.get('behavior')
-        
-        if not shape_name or not behavior:
-            return jsonify({"error": "shape_name and behavior are required"}), 400
-            
-        existing = DefProcessNodeType.query.filter_by(shape_name=shape_name).first()
-        if existing:
-            return jsonify({"error": f"Node type with shape_name '{shape_name}' already exists"}), 409
-            
-        new_type = DefProcessNodeType(
-            shape_name=shape_name,
-            behavior=behavior,
-            display_name=data.get('display_name'),
-            requires_step_function=data.get('requires_step_function', 'N'),
-            description=data.get('description'),
-            created_by=get_jwt_identity(),
-            creation_date=datetime.utcnow(),
-            last_updated_by=get_jwt_identity(),
-            last_update_date=datetime.utcnow()
-        )
-        
-        db.session.add(new_type)
-        db.session.commit()
-        
-        return jsonify({"message": "Added successfully", "result": new_type.json()}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"message": "Error creating node type", "error": str(e)}), 500
-
-
-@workflow_bp.route('/workflow/node_types', methods=['PUT', 'DELETE'])
-@jwt_required()
-def manage_node_type():
-    try:
-        def_node_type_id = request.args.get('def_node_type_id')
-        if not def_node_type_id:
-            return jsonify({"error": "Missing def_node_type_id query parameter"}), 400
-            
-        node_type = DefProcessNodeType.query.get(def_node_type_id)
-        if not node_type:
-            return jsonify({"error": "Node type not found"}), 404
-            
-        if request.method == 'DELETE':
-            db.session.delete(node_type)
-            db.session.commit()
-            return jsonify({"message": "Node type deleted"}), 200
-            
-        # PUT method
-        data = request.json
-        if 'shape_name' in data:
-             # Ensure uniqueness if changing shape_name
-             new_shape = data['shape_name']
-             if new_shape != node_type.shape_name:
-                 existing = DefProcessNodeType.query.filter_by(shape_name=new_shape).first()
-                 if existing:
-                     return jsonify({"error": f"Shape name '{new_shape}' already exists"}), 409
-                 node_type.shape_name = new_shape
-                 
-        if 'behavior' in data: node_type.behavior = data['behavior']
-        if 'display_name' in data: node_type.display_name = data['display_name']
-        if 'requires_step_function' in data: node_type.requires_step_function = data['requires_step_function']
-        if 'description' in data: node_type.description = data['description']
-        
-        node_type.last_updated_by = get_jwt_identity()
-        node_type.last_update_date = datetime.utcnow()
-        
-        db.session.commit()
-        return jsonify({"message": "Edited successfully", "result": node_type.json()}), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"message": f"Error during {request.method} node type", "error": str(e)}), 500
 
 
 @workflow_bp.route('/workflow', methods=['POST'])
@@ -199,7 +102,30 @@ def get_all_workflows():
         return jsonify({"message": "Error fetching workflows", "error": str(e)}), 500
 
 
-
+@workflow_bp.route('/workflow', methods=['DELETE'])
+@jwt_required()
+def delete_workflow():
+    try:
+        process_id = request.args.get('process_id')
+        process_name = request.args.get('process_name')
+        
+        workflow = None
+        if process_id:
+            workflow = DefProcess.query.get(process_id)
+        elif process_name:
+            workflow = DefProcess.query.filter_by(process_name=process_name).first()
+            
+        if not workflow:
+            return jsonify({"error": "Workflow not found or missing identifiers"}), 404
+        
+        db.session.delete(workflow)
+        db.session.commit()
+        
+        return jsonify({"message": "Workflow deleted"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"message": "Error deleting workflow", "error": str(e)}), 500
 
 
 @workflow_bp.route('/workflow/validate', methods=['POST'])
@@ -220,46 +146,6 @@ def validate_workflow():
         
     except Exception as e:
         return jsonify({"message": "Error validating workflow", "error": str(e)}), 500
-
-
-@workflow_bp.route('/workflow/executions', methods=['GET'])
-@jwt_required()
-def get_workflow_executions():
-    try:
-        process_id = request.args.get('process_id')
-        if not process_id:
-             return jsonify({"error": "Missing process_id query parameter"}), 400
-             
-        executions = DefProcessExecution.query.filter_by(process_id=process_id)\
-            .order_by(DefProcessExecution.execution_start_date.desc()).all()
-            
-        return jsonify({"result": [e.json() for e in executions]}), 200
-        
-    except Exception as e:
-        return jsonify({"message": "Error fetching executions", "error": str(e)}), 500
-
-
-@workflow_bp.route('/workflow/execution_steps', methods=['GET'])
-@jwt_required()
-def get_workflow_execution_steps():
-    try:
-        def_process_execution_id = request.args.get('def_process_execution_id')
-        node_id = request.args.get('node_id')
-        
-        if not def_process_execution_id:
-            return jsonify({"error": "Missing def_process_execution_id query parameter"}), 400
-            
-        query = DefProcessExecutionStep.query.filter_by(def_process_execution_id=def_process_execution_id)
-        
-        if node_id:
-            query = query.filter_by(node_id=node_id)
-            
-        steps = query.order_by(DefProcessExecutionStep.execution_start_date.asc()).all()
-            
-        return jsonify({"result": [s.json() for s in steps]}), 200
-        
-    except Exception as e:
-        return jsonify({"message": "Error fetching execution steps", "error": str(e)}), 500
 
 
 @workflow_bp.route('/workflow/run/<int:process_id>', methods=['POST'])
@@ -306,29 +192,3 @@ def run_workflow(process_id):
         return jsonify({"message": "Workflow initialization error", "error": str(e)}), 400
     except Exception as e:
         return jsonify({"message": "System error during startup", "error": str(e)}), 500
-
-
-@workflow_bp.route('/workflow', methods=['DELETE'])
-@jwt_required()
-def delete_workflow():
-    try:
-        process_id = request.args.get('process_id')
-        process_name = request.args.get('process_name')
-        
-        workflow = None
-        if process_id:
-            workflow = DefProcess.query.get(process_id)
-        elif process_name:
-            workflow = DefProcess.query.filter_by(process_name=process_name).first()
-            
-        if not workflow:
-            return jsonify({"error": "Workflow not found or missing identifiers"}), 404
-        
-        db.session.delete(workflow)
-        db.session.commit()
-        
-        return jsonify({"message": "Workflow deleted"}), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"message": "Error deleting workflow", "error": str(e)}), 500
