@@ -223,7 +223,7 @@ def get_required_params():
                             if os.path.isfile(path):
                                 script_path_map[t.task_name] = path
             except Exception as e:
-                print(f"Error fetching tasks from DB: {e}")
+                print(f"Error fetching tasks from DB: {e}")  # Fall back to auto-detection if DB lookup fails
             
             # Fallback: for tasks not found in DB, try auto-detecting {task_name}.py
             if script_base:
@@ -314,31 +314,33 @@ def get_required_params():
                 if pred_id in visited:
                     continue
                 visited.add(pred_id)
-                pred_output_keys.update(node_outputs.get(pred_id, []))
+                # Normalize output keys to uppercase for case-insensitive matching
+                pred_output_keys.update(k.upper() for k in node_outputs.get(pred_id, []))
                 # Add predecessors of this predecessor
                 stack.extend(preds.get(pred_id, []))
             
             # Convert provided to dict - handle both formats:
             # {name: x, value: y} or {attribute_name: x, attribute_value: y}
+            # Keys are normalized to UPPERCASE for case-insensitive matching
             provided_dict = {}
             if isinstance(provided, dict):
-                provided_dict = provided
+                provided_dict = {k.upper(): v for k, v in provided.items()}
             elif isinstance(provided, list):
                 for p in provided:
                     if isinstance(p, dict):
                         key = p.get('name') or p.get('attribute_name')
                         val = p.get('value') or p.get('attribute_value')
                         if key:
-                            provided_dict[key] = val
+                            provided_dict[key.upper()] = val
             
             # Find inputs that are NOT satisfied by predecessors
             for param in defined:
-                # Skip if already provided in node attributes
-                if provided_dict.get(param):
+                # Skip if already provided in node attributes (case-insensitive)
+                if param.upper() in provided_dict:
                     continue
                 
-                # Skip if can be auto-filled from predecessor outputs
-                if param in pred_output_keys:
+                # Skip if can be auto-filled from predecessor outputs (case-insensitive)
+                if param.upper() in pred_output_keys:
                     continue
                 
                 # This input needs user input
