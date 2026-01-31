@@ -11,6 +11,12 @@ from datetime import datetime
 from executors.extensions import db
 from executors.models import DefProcess
 from workflow_engine import WorkflowEngine, WorkflowError
+from workflow_engine.introspection import (
+    introspect_inputs,
+    introspect_outputs,
+    batch_db_defined_inputs,
+    build_predecessors
+)
 
 from . import workflow_bp
 
@@ -146,6 +152,216 @@ def validate_workflow():
         
     except Exception as e:
         return jsonify({"message": "Error validating workflow", "error": str(e)}), 500
+
+
+@workflow_bp.route('/workflow/required_params', methods=['POST'])
+@jwt_required()
+def get_required_params():
+    """
+    Get required USER parameters for a workflow - analyzes task dependencies.
+    
+    This scans scripts and excludes inputs that are auto-filled from predecessor outputs.
+    Returns only the inputs the user must provide before running the workflow.
+    
+    Accepts graph format: {"nodes":[...],"edges":[...]}
+    
+    Response:
+    {
+      "workflow_inputs": [
+        {"name": "user_id", "type": "string", "required": true, "source_task": "validate_user_id"}
+      ],
+      "has_required_inputs": true,
+      "total_inputs": 1
+    }
+    """
+    from executors.models import DefAsyncTask
+    import os
+    
+    try:
+        payload = request.get_json() or {}
+        nodes = payload.get('nodes', [])
+        edges = payload.get('edges', [])
+        
+        if not nodes:
+            return jsonify({"error": "No nodes provided"}), 400
+        
+        # Build predecessor map
+        preds = build_predecessors(nodes, edges)
+        
+        # Script base path from env, with hardcoded fallback
+        script_base = os.getenv("SCRIPT_PATH_01", "")
+        
+        # Collect all task names to batch lookup script paths
+        task_names = []
+        for n in nodes:
+            data = n.get('data', {}) or {}
+            task_name = data.get('step_function') or data.get('task_name')
+            if task_name:
+                task_names.append(task_name)
+        
+        # Batch lookup script paths from DefAsyncTask
+        script_path_map = {}
+        if task_names:
+            unique_names = list(set(task_names))
+            try:
+                tasks = DefAsyncTask.query.filter(DefAsyncTask.task_name.in_(unique_names)).all()
+                for t in tasks:
+                    # Prefer script_path, fallback to script_name
+                    path = t.script_path or t.script_name
+                    if path:
+                        # If it's already an absolute path and exists, use it directly
+                        if os.path.isabs(path):
+                            if os.path.isfile(path):
+                                script_path_map[t.task_name] = path
+                        elif script_base:
+                            # Join with script_base if available
+                            full_path = os.path.join(script_base, path)
+                            if os.path.isfile(full_path):
+                                script_path_map[t.task_name] = full_path
+                        else:
+                            # No script_base, try path directly (might work if relative to CWD)
+                            if os.path.isfile(path):
+                                script_path_map[t.task_name] = path
+            except Exception as e:
+                print(f"Error fetching tasks from DB: {e}")
+            
+            # Fallback: for tasks not found in DB, try auto-detecting {task_name}.py
+            if script_base:
+                for task_name in unique_names:
+                    if task_name not in script_path_map:
+                        auto_path = os.path.join(script_base, f"{task_name}.py")
+                        if os.path.isfile(auto_path):
+                            script_path_map[task_name] = auto_path
+        
+        
+        # Batch fetch DB params
+        db_params_map = batch_db_defined_inputs(task_names)
+        
+        # Cache for introspection
+        script_cache = {}
+        
+        def _get_inputs(task_name, node_data):
+            """Get inputs for a task - DB first, then introspect script"""
+            if db_params_map.get(task_name):
+                return db_params_map[task_name]
+            
+            # Try node's script_path first, then lookup from DB
+            path = node_data.get('script_path') or node_data.get('script') or script_path_map.get(task_name)
+            if not path:
+                return []
+            
+            cache_key = f"in_{path}"
+            if cache_key not in script_cache:
+                script_cache[cache_key] = introspect_inputs(path)
+            return script_cache[cache_key]
+        
+        def _get_outputs(task_name, node_data):
+            """Get outputs for a task - introspect from script"""
+            path = node_data.get('script_path') or node_data.get('script') or script_path_map.get(task_name)
+            if not path:
+                return []
+            
+            cache_key = f"out_{path}"
+            if cache_key not in script_cache:
+                script_cache[cache_key] = introspect_outputs(path)
+            return script_cache[cache_key]
+        
+        # Build node lookup maps
+        node_map = {n['id']: n for n in nodes}
+        
+        # Introspect outputs for all nodes
+        node_outputs = {}
+        for n in nodes:
+            node_id = n.get('id')
+            data = n.get('data', {}) or {}
+            task_name = data.get('step_function') or data.get('task_name')
+            node_type = data.get('type', '')
+            
+            if node_type in ('Start', 'Stop') or not task_name:
+                node_outputs[node_id] = []
+            else:
+                node_outputs[node_id] = _get_outputs(task_name, data)
+        
+        # Collect workflow-level required inputs
+        # These are inputs that cannot be satisfied by any predecessor
+        workflow_inputs = []
+        seen_inputs = set()  # Avoid duplicates
+        
+        for n in nodes:
+            node_id = n.get('id')
+            data = n.get('data', {}) or {}
+            task_name = data.get('step_function') or data.get('task_name')
+            label = data.get('label') or task_name or 'Unknown'
+            node_type = data.get('type', '')
+            provided = data.get('attributes') or data.get('parameters') or {}
+            
+            # Skip Start/Stop nodes
+            if node_type in ('Start', 'Stop') or not task_name:
+                continue
+            
+            # Get defined inputs for this task
+            defined = _get_inputs(task_name, data)
+            if not defined:
+                continue
+            
+            # Collect ALL predecessor output keys (recursive through chain)
+            # Not just direct predecessors, but all ancestors
+            pred_output_keys = set()
+            visited = set()
+            stack = list(preds.get(node_id, []))
+            while stack:
+                pred_id = stack.pop()
+                if pred_id in visited:
+                    continue
+                visited.add(pred_id)
+                pred_output_keys.update(node_outputs.get(pred_id, []))
+                # Add predecessors of this predecessor
+                stack.extend(preds.get(pred_id, []))
+            
+            # Convert provided to dict - handle both formats:
+            # {name: x, value: y} or {attribute_name: x, attribute_value: y}
+            provided_dict = {}
+            if isinstance(provided, dict):
+                provided_dict = provided
+            elif isinstance(provided, list):
+                for p in provided:
+                    if isinstance(p, dict):
+                        key = p.get('name') or p.get('attribute_name')
+                        val = p.get('value') or p.get('attribute_value')
+                        if key:
+                            provided_dict[key] = val
+            
+            # Find inputs that are NOT satisfied by predecessors
+            for param in defined:
+                # Skip if already provided in node attributes
+                if provided_dict.get(param):
+                    continue
+                
+                # Skip if can be auto-filled from predecessor outputs
+                if param in pred_output_keys:
+                    continue
+                
+                # This input needs user input
+                input_key = param  # Use param name as dedup key
+                if input_key not in seen_inputs:
+                    seen_inputs.add(input_key)
+                    workflow_inputs.append({
+                        "name": param,
+                        "type": "string",
+                        "required": True,
+                        "value": "",
+                        "source_task": task_name,
+                        "source_label": label
+                    })
+        
+        return jsonify({
+            "workflow_inputs": workflow_inputs,
+            "has_required_inputs": len(workflow_inputs) > 0,
+            "total_inputs": len(workflow_inputs)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": "Failed to get parameters", "details": str(e)}), 500
 
 
 @workflow_bp.route('/workflow/run/<int:process_id>', methods=['POST'])

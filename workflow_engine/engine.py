@@ -159,13 +159,25 @@ class WorkflowEngine:
             # Get actual result from EagerResult
             executor_output = eager_result.get() if hasattr(eager_result, 'get') else eager_result
             
-            # Extract only the inner 'result' field
+            logger.debug(f"Executor output for {label}: {executor_output}")
+
+            # Extract result or error
             actual_result = None
+            error = None
+            
             if isinstance(executor_output, dict):
                 actual_result = executor_output.get('result')
+                error = executor_output.get('error')
             else:
                 actual_result = executor_output
             
+            if error:
+                return {
+                    'status': 'failed',
+                    'node_id': node_id,
+                    'error': error
+                }
+
             return {
                 'status': 'completed',
                 'node_id': node_id,
