@@ -1,4 +1,4 @@
-# PROCG Enterprise Backend
+# PROCG (Proactive Controls and Governance) Backend
 
 The backend repository for the PROCG web application.
 
@@ -129,11 +129,7 @@ The test database (`DATABASE_URL_TEST`) runs alongside production. Use it for:
 - API development and experimentation
 - Integration testing
 
-**Test API Endpoints:**
-- `GET /api/test/health` - Check test database connection
-- `POST /api/test/query` - Execute raw SQL queries on test database
 
-To create new test APIs, add them to `api/test_apis/` and use `db_test` instead of `db`.
 
 ## Running the Application
 
