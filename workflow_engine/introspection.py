@@ -42,7 +42,13 @@ def introspect_outputs(script_path):
     Heuristic: find output keys from:
     1. Top-level result = { 'k': ... } 
     2. return { 'k': ... } statements inside functions
+    
+    Filters out error-related keys (error, err, exception, message) since these
+    are typically error responses, not useful data for chaining.
     """
+    # Keys to exclude from outputs (error responses, not useful for chaining)
+    EXCLUDED_KEYS = {'error', 'err', 'exception', 'message', 'msg'}
+    
     keys = []
     if not script_path or not os.path.isfile(script_path):
         return keys
@@ -54,13 +60,17 @@ def introspect_outputs(script_path):
         if m:
             body = m.group(1)
             for k in re.finditer(r"['\"](?P<key>[\w_]+)['\"]\s*:", body):
-                keys.append(k.group('key'))
+                key = k.group('key')
+                if key.lower() not in EXCLUDED_KEYS:
+                    keys.append(key)
         
         # Pattern 2: return { ... } - find all return dicts
         for m in re.finditer(r"\breturn\s*\{([^}]*)\}", content, re.S):
             body = m.group(1)
             for k in re.finditer(r"['\"](?P<key>[\w_]+)['\"]\s*:", body):
-                keys.append(k.group('key'))
+                key = k.group('key')
+                if key.lower() not in EXCLUDED_KEYS:
+                    keys.append(key)
                 
     except Exception:
         pass
