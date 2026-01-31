@@ -70,6 +70,25 @@ Ensure you have the following installed:
     pip install drivers/cdata_servicenow_connector-25.0.9454-cp311-cp311-win_amd64.whl
     ```
 
+5.  **Install CData License:**
+    After installing CData connectors, you must activate the license.
+    
+    **Option A: Command Line (Recommended)**
+    Run the registration module for the specific connector:
+    ```bash
+    # For CData Connect
+    python -m cdata.connect.register
+    
+    # For ServiceNow
+    python -m cdata.servicenow.register
+    ```
+    
+    **Option B: GUI License Manager**
+    If the command line method fails, run the license manager executable directly:
+    1. Navigate to `procg_venv\Lib\site-packages\cdata\installlic_connect` (or `installlic_servicenow`).
+    2. Run `install-license.exe`.
+    3. Enter your product key or start a trial.
+
 ## Configuration
 
 Create a `.env` file in the root directory with the following variables:
@@ -146,3 +165,15 @@ celery -A executors.celery_app beat --loglevel=info
 - `utils/`: Utility functions.
 - `config.py`: Application configuration.
 - `app.py`: Application entry point.
+
+## Why `flask run` vs `python app.py`?
+
+While you can still run the app using `python app.py` if you add `app.run()` to the bottom of the file, we recommend using `flask run`.
+
+### The Difference
+- **`python app.py`**: Runs the file as a standalone script. It requires you to manually manage the server start logic in your code.
+- **`flask run`**: Uses the official Flask CLI. It automatically finds your application object, handles environment variables (`.env`) more robustly, and provides a cleaner separation between your code and the server.
+
+### What's Better?
+**`flask run` is the modern standard.** It keeps the application entry point clean and is the preferred way to run Flask applications during development.
+
