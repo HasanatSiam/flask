@@ -84,7 +84,7 @@ def stream_execution(execution_id):
             # Calculate elapsed time
             elapsed = time.time() - start_time
             if elapsed > max_wait_seconds:
-                yield f"data: {json.dumps({'type': 'timeout', 'message': 'Stream timeout'})}\n\n"
+                yield f"event: timeout\ndata: {json.dumps({'message': 'Stream timeout'})}\n\n"
                 break
             
             try:
@@ -93,7 +93,7 @@ def stream_execution(execution_id):
                     
                     execution = DefProcessExecution.query.get(execution_id)
                     if not execution:
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'Execution not found'})}\n\n"
+                        yield f"event: error\ndata: {json.dumps({'message': 'Execution not found'})}\n\n"
                         break
                     
                     # Get all steps (we need to check for updates to existing steps too)
@@ -113,19 +113,19 @@ def stream_execution(execution_id):
                     
                     # If new step OR status changed
                     if step_id not in last_step_states or last_step_states[step_id] != status:
-                        yield f"data: {json.dumps({'type': 'step', 'data': step})}\n\n"
+                        yield f"event: step\ndata: {json.dumps(step)}\n\n"
                         last_step_states[step_id] = status
 
                 # Check completion
                 if execution_status not in ['RUNNING', 'QUEUED']:
-                    yield f"data: {json.dumps({'type': 'complete', 'data': execution_data})}\n\n"
+                    yield f"event: complete\ndata: {json.dumps(execution_data)}\n\n"
                     break
                 
                 # Heartbeat / Keepalive
-                yield f"data: {json.dumps({'type': 'heartbeat', 'status': execution_status})}\n\n"
+                yield f"event: heartbeat\ndata: {json.dumps({'status': execution_status})}\n\n"
                 
             except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
                 time.sleep(1) # prevent rapid error loops
                 
             # Polling interval
