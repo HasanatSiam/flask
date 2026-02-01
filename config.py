@@ -106,7 +106,7 @@ def create_app() -> Flask:
         JWT_ACCESS_TOKEN_EXPIRES = parse_expiry(os.getenv('ACCESS_TOKEN_EXPIRED_TIME', '15m')),
         JWT_REFRESH_TOKEN_EXPIRES = parse_expiry(os.getenv('REFRESH_TOKEN_EXPIRED_TIME', '30d')),
         JWT_TOKEN_LOCATION = ['headers', 'query_string'],  # Support query param for SSE EventSource
-        JWT_QUERY_STRING_NAME = 'jwt',  # ?jwt=<token>
+        JWT_QUERY_STRING_NAME = 'access_token',  # ?access_token=<token>
         FLOWER_URL = FLOWER_URL,
 
         INV_EXPIRE_TIME = parse_expiry(os.getenv('INVITATION_ACCESS_TOKEN_EXPIRED_TIME', '1h')),
