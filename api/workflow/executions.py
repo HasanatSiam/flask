@@ -49,6 +49,9 @@ def get_workflow_execution_steps():
             
         steps = query.order_by(DefProcessExecutionStep.execution_start_date.asc()).all()
             
+        if node_id and len(steps) == 1:
+            return jsonify({"result": steps[0].json()}), 200
+
         return jsonify({"result": [s.json() for s in steps]}), 200
         
     except Exception as e:
