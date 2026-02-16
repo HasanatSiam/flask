@@ -410,3 +410,77 @@ def run_workflow(process_id):
         return jsonify({"message": "Workflow initialization error", "error": str(e)}), 400
     except Exception as e:
         return jsonify({"message": "System error during startup", "error": str(e)}), 500
+
+
+@workflow_bp.route('/workflow/run_dynamic', methods=['POST'])
+@jwt_required()
+def run_adhoc_workflow():
+    """
+    Run an unsaved workflow asynchronously tracking execution history.
+    
+    Does NOT create a DefProcess record.
+    The execution history (DefProcessExecution, DefProcessExecutionStep) will start
+    with process_id=None, but will contain all step details.
+    
+    Request body:
+    {
+        "process_structure": {"nodes": [...], "edges": [...]},
+        "context": {"param1": "value1"}
+    }
+    
+    Response:
+    {
+        "message": "Workflow started",
+        "def_process_execution_id": 123,
+        "status": "RUNNING"
+    }
+    """
+    try:
+        from threading import Thread
+        from flask import current_app
+        
+        data = request.get_json(silent=True)
+        if not data or 'process_structure' not in data:
+            return jsonify({"error": "process_structure is required"}), 400
+        
+        process_structure = data['process_structure']
+        context = data.get('context', {})
+        user_id = get_jwt_identity()
+        
+        engine = WorkflowEngine()
+        
+        # 1. Validate structure first
+        errors = engine.validate(process_structure)
+        if errors:
+            return jsonify({"message": "Invalid workflow structure", "errors": errors}), 400
+            
+        # 2. Initialize execution without a Process ID (Ad-hoc run)
+        # This creates the DefProcessExecution record to hold history
+        def_process_execution_id = engine.initialize_execution(None, context, user_id)
+        
+        # 3. Run the engine (Async) passing the structure explicitly
+        app = current_app._get_current_object()
+        def background_run():
+            with app.app_context():
+                try:
+                    # Pass the structure directly since it's not in DB
+                    engine.execute_from_id(
+                        def_process_execution_id, 
+                        process_structure=process_structure
+                    )
+                except Exception as e:
+                    print(f"Background adhoc execution failed for {def_process_execution_id}: {e}")
+
+        Thread(target=background_run).start()
+        
+        return jsonify({
+            "message": "Workflow started",
+            "def_process_execution_id": def_process_execution_id,
+            "status": "RUNNING"
+        }), 202
+        
+    except WorkflowError as e:
+        return jsonify({"message": "Workflow initialization error", "error": str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"message": "System error during startup", "error": str(e)}), 500
