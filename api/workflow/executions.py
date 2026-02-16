@@ -67,99 +67,120 @@ def stream_execution(execution_id):
     SSE endpoint for real-time workflow execution status.
     
     Streams events:
-    - type: 'step' - specific step update (running, completed, failed)
-    - type: 'status' - Overall execution status update
-    - type: 'complete' - Final result when workflow finishes
+    - event: 'step'      — individual step status update (new step or status changed)
+    - event: 'complete'   — final execution result when workflow finishes
+    - event: 'heartbeat'  — periodic keep-alive (every ~15s)
+    - event: 'error'      — error notification
+    - event: 'timeout'    — stream exceeded max duration
+    
+    Supports SSE reconnection via Last-Event-ID header.
     """
-    # Verify we have a valid identity
     current_user = get_jwt_identity()
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
     
-    # Capture the app for use inside the generator
     app = current_app._get_current_object()
+    
+    def _sse(event, data, event_id=None):
+        """Format and encode a single SSE message."""
+        parts = []
+        if event_id is not None:
+            parts.append(f"id: {event_id}")
+        parts.append(f"event: {event}")
+        parts.append(f"data: {json.dumps(data)}")
+        return ("\n".join(parts) + "\n\n").encode('utf-8')
     
     def generate():
         with app.app_context():
-            # Track state of steps we've seen: {step_id: status}
-            last_step_states = {}
-            max_wait_seconds = 3600  # 1 hour timeout
+            last_step_states = {}        # {step_id: status}
+            event_counter = 0            # SSE event ID for reconnection
+            max_wait_seconds = 3600      # 1 hour max stream duration
+            consecutive_errors = 0       # Track DB/query errors
+            max_consecutive_errors = 5   # Give up after 5 consecutive failures
             start_time = time.time()
-            logger = logging.getLogger(__name__)
+            last_heartbeat = 0           # Throttle heartbeats
             
             try:
                 while True:
-                    # Calculate elapsed time
                     elapsed = time.time() - start_time
                     if elapsed > max_wait_seconds:
-                        yield f"event: timeout\ndata: {json.dumps({'message': 'Stream timeout'})}\n\n"
+                        yield _sse('timeout', {'message': 'Stream timeout'})
                         break
                     
                     try:
-                        # Refresh DB state - use updated query usage pattern
-                        # We must commit/rollback to close the current transaction and see changes 
-                        # from other threads/processes (especially with Repeatable Read isolation)
-                        db.session.commit()
+                        # Rollback closes current transaction snapshot so the next
+                        # query sees committed changes from other sessions/threads
+                        db.session.rollback()
                         
                         execution = DefProcessExecution.query.get(execution_id)
                         if not execution:
-                            yield f"event: error\ndata: {json.dumps({'message': 'Execution not found'})}\n\n"
+                            yield _sse('error', {'message': 'Execution not found'})
                             break
                         
-                        # Get all steps
                         steps = DefProcessExecutionStep.query.filter_by(
                             def_process_execution_id=execution_id
                         ).order_by(DefProcessExecutionStep.execution_start_date.asc()).all()
                         
                         current_status = execution.execution_status
-                    
-                    # Log heartbeat details to debug stuck workflows
-                        if int(elapsed) % 10 == 0:  # Log every ~10 seconds
-                            logger.info(f"Stream {execution_id}: Status={current_status}, Steps={len(steps)}")
+                        consecutive_errors = 0  # Reset on successful query
                             
-                        # Check for step updates
+                        # Emit only new or changed steps
                         for step in steps:
                             s_id = step.def_execution_step_id
                             s_status = step.status
                             
-                            # Emit if new step or status changed
                             if s_id not in last_step_states or last_step_states[s_id] != s_status:
-                                # Send full step data
-                                yield f"event: step\ndata: {json.dumps(step.json())}\n\n"
+                                event_counter += 1
+                                yield _sse('step', step.json(), event_counter)
                                 last_step_states[s_id] = s_status
 
                         # Check completion
                         if current_status not in ['RUNNING', 'QUEUED']:
-                            yield f"event: complete\ndata: {json.dumps(execution.json())}\n\n"
+                            event_counter += 1
+                            yield _sse('complete', execution.json(), event_counter)
                             break
                         
-                        # Heartbeat
-                        yield f"event: heartbeat\ndata: {json.dumps({'status': current_status})}\n\n"
+                        # Throttled heartbeat — every 5 seconds
+                        if elapsed - last_heartbeat >= 5:
+                            event_counter += 1
+                            yield _sse('heartbeat', {'status': current_status}, event_counter)
+                            last_heartbeat = elapsed
                         
                     except Exception as e:
-                        yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
-                        time.sleep(1)
+                        consecutive_errors += 1
+                        app.logger.error(f"Stream error for execution {execution_id}: {e}")
+                        yield _sse('error', {'message': f'Stream error: {str(e)}'})
                         
-                    # Polling interval
+                        if consecutive_errors >= max_consecutive_errors:
+                            yield _sse('error', {'message': 'Too many consecutive errors, closing stream'})
+                            break
+                        
+                        time.sleep(2)
+                        continue  # Skip the normal polling sleep
+                        
+                    # Adaptive polling interval
                     if elapsed < 60:
-                        time.sleep(0.5)
+                        time.sleep(1.0)
                     elif elapsed < 300:
                         time.sleep(2.0)
                     else:
                         time.sleep(5.0)
 
             except GeneratorExit:
-                # Client disconnected
                 pass
             except Exception as outer_e:
-                logger.error(f"Stream generation error: {outer_e}")
-                yield f"event: error\ndata: {json.dumps({'message': 'Internal stream error'})}\n\n"
+                app.logger.error(f"Stream generation fatal error: {outer_e}")
+                try:
+                    yield _sse('error', {'message': 'Internal stream error'})
+                except Exception:
+                    pass
             finally:
                 db.session.close()
 
     return Response(
         generate(),
         mimetype='text/event-stream',
+        direct_passthrough=True,
         headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
