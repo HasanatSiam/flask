@@ -193,16 +193,18 @@ class WorkflowEngine:
                 'error': str(e)
             }
     
-    def initialize_execution(self, process_id: int, context: dict = None, user_id: int = None) -> int:
+    def initialize_execution(self, process_id: Optional[int], context: dict = None, user_id: int = None) -> int:
         """
         Create the execution record and return the ID immediately.
+        Wrapper supports process_id=None for ad-hoc executions.
         """
-        process = DefProcess.query.get(process_id)
-        if not process:
-            raise WorkflowError(f"Process not found: {process_id}")
+        if process_id is not None:
+            process = DefProcess.query.get(process_id)
+            if not process:
+                raise WorkflowError(f"Process not found: {process_id}")
             
         execution_record = DefProcessExecution(
-            process_id=process_id,
+            process_id=process_id,  # Can be None
             execution_status='RUNNING',
             input_data=context or {},
             execution_start_date=datetime.utcnow(),
@@ -212,22 +214,35 @@ class WorkflowEngine:
         db.session.add(execution_record)
         db.session.commit()
         return execution_record.def_process_execution_id
-
-    def execute_from_id(self, execution_id: int, on_task_complete: Callable[[dict], None] = None):
+    
+    def execute_from_id(self, execution_id: int, on_task_complete: Callable[[dict], None] = None,
+                       process_structure: dict = None):
         """
         Resume and run an execution from its ID.
+        If process_structure is provided (adhoc run), use it instead of DB lookup.
         """
         execution_record = DefProcessExecution.query.get(execution_id)
         if not execution_record:
             raise WorkflowError(f"Execution record not found: {execution_id}")
 
-        process = DefProcess.query.get(execution_record.process_id)
         context = execution_record.input_data or {}
         user_id = execution_record.created_by
         
+        # Determine stricture source
+        structure_to_use = process_structure
+        if not structure_to_use:
+            # Fallback to DB process
+            if execution_record.process_id:
+                process = DefProcess.query.get(execution_record.process_id)
+                if process:
+                    structure_to_use = process.process_structure
+        
+        if not structure_to_use:
+            raise WorkflowError("No workflow structure found for execution")
+
         try:
             # Parse structure
-            self._parse(process.process_structure)
+            self._parse(structure_to_use)
             
             # Find start
             start = self._find_start()
@@ -331,7 +346,80 @@ class WorkflowEngine:
         return errors
 
     
-def run_workflow(process_id: int, context: dict = None, 
+    def execute_direct(self, process_structure: dict, context: dict = None,
+                       user_id: int = None, on_task_complete: Callable[[dict], None] = None) -> dict:
+        """
+        Execute a workflow directly from process_structure without saving.
+        
+        Args:
+            process_structure: The workflow definition with nodes and edges
+            context: Input parameters for the workflow
+            user_id: User executing the workflow (for logging)
+            on_task_complete: Callback after each step completes
+            
+        Returns:
+            dict with status and output/error
+        """
+        try:
+            # Parse structure
+            self._parse(process_structure)
+            
+            # Find start
+            start = self._find_start()
+            if not start:
+                raise WorkflowError("No Start node found")
+            
+            context = context or {}
+            current_nodes = [start]
+            
+            while current_nodes:
+                node = current_nodes.pop(0)
+                
+                # Execute step
+                try:
+                    result = self._execute_step(node, context)
+                except Exception as e:
+                    result = {'status': 'failed', 'error': str(e), 'node_id': node.get('id')}
+                
+                if on_task_complete:
+                    on_task_complete(result)
+                
+                if result.get('status') == 'failed':
+                    return {
+                        'status': 'FAILED',
+                        'error': result.get('error'),
+                        'node_id': result.get('node_id')
+                    }
+                
+                # Update context with results
+                if result.get('result') and isinstance(result['result'], dict):
+                    context.update(result['result'])
+                
+                # Check for Stop node
+                node_type_config = DefProcessNodeType.query.filter_by(
+                    shape_name=node.get('data', {}).get('type')
+                ).first()
+                if node_type_config and node_type_config.behavior == 'EVENT' and node.get('data', {}).get('type') == 'Stop':
+                    break
+                
+                next_nodes = self._get_next_nodes(node['id'])
+                if next_nodes:
+                    current_nodes.append(next_nodes[0])
+            
+            return {
+                'status': 'COMPLETED',
+                'output': context
+            }
+            
+        except Exception as e:
+            logger.exception("Direct execution failed")
+            return {
+                'status': 'FAILED',
+                'error': str(e)
+            }
+
+    
+def run_workflow(process_id: int, context: dict = None,
                  on_task_complete: Callable[[dict], None] = None) -> dict:
     """Convenience function to run a workflow."""
     engine = WorkflowEngine()
