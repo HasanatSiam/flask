@@ -345,78 +345,7 @@ class WorkflowEngine:
             errors.append(f"Structure error: {str(e)}")
         return errors
 
-    
-    def execute_direct(self, process_structure: dict, context: dict = None,
-                       user_id: int = None, on_task_complete: Callable[[dict], None] = None) -> dict:
-        """
-        Execute a workflow directly from process_structure without saving.
-        
-        Args:
-            process_structure: The workflow definition with nodes and edges
-            context: Input parameters for the workflow
-            user_id: User executing the workflow (for logging)
-            on_task_complete: Callback after each step completes
-            
-        Returns:
-            dict with status and output/error
-        """
-        try:
-            # Parse structure
-            self._parse(process_structure)
-            
-            # Find start
-            start = self._find_start()
-            if not start:
-                raise WorkflowError("No Start node found")
-            
-            context = context or {}
-            current_nodes = [start]
-            
-            while current_nodes:
-                node = current_nodes.pop(0)
-                
-                # Execute step
-                try:
-                    result = self._execute_step(node, context)
-                except Exception as e:
-                    result = {'status': 'failed', 'error': str(e), 'node_id': node.get('id')}
-                
-                if on_task_complete:
-                    on_task_complete(result)
-                
-                if result.get('status') == 'failed':
-                    return {
-                        'status': 'FAILED',
-                        'error': result.get('error'),
-                        'node_id': result.get('node_id')
-                    }
-                
-                # Update context with results
-                if result.get('result') and isinstance(result['result'], dict):
-                    context.update(result['result'])
-                
-                # Check for Stop node
-                node_type_config = DefProcessNodeType.query.filter_by(
-                    shape_name=node.get('data', {}).get('type')
-                ).first()
-                if node_type_config and node_type_config.behavior == 'EVENT' and node.get('data', {}).get('type') == 'Stop':
-                    break
-                
-                next_nodes = self._get_next_nodes(node['id'])
-                if next_nodes:
-                    current_nodes.append(next_nodes[0])
-            
-            return {
-                'status': 'COMPLETED',
-                'output': context
-            }
-            
-        except Exception as e:
-            logger.exception("Direct execution failed")
-            return {
-                'status': 'FAILED',
-                'error': str(e)
-            }
+
 
     
 def run_workflow(process_id: int, context: dict = None,
