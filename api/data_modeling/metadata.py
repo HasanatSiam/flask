@@ -443,10 +443,29 @@ def get_table_data():
                     "message": f"Table or View '{table_name}' not found in schema '{schema_name}'"
                 }), 404)
 
-        # Build paginated query
-        # Note: Using text() for raw SQL as we don't have model mapping for external tables
+        # Get all columns and primary keys
+        all_columns = inspector.get_columns(table_name, schema=schema_name)
+        column_names = [c['name'] for c in all_columns]
+        
+        pk_constraint = inspector.get_pk_constraint(table_name, schema=schema_name)
+        primary_keys = pk_constraint.get('constrained_columns', [])
+
+        # Order columns: Primary Keys first, then the rest
+        ordered_columns = []
+        for pk in primary_keys:
+            if pk in column_names:
+                ordered_columns.append(pk)
+        
+        for col in column_names:
+            if col not in ordered_columns:
+                ordered_columns.append(col)
+
+        # Build paginated query with explicit column order
+        quoted_cols = [f'"{c}"' for c in ordered_columns]
+        columns_str = ", ".join(quoted_cols)
+        
         count_query = text(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"')
-        data_query = text(f'SELECT * FROM "{schema_name}"."{table_name}" LIMIT :limit OFFSET :offset')
+        data_query = text(f'SELECT {columns_str} FROM "{schema_name}"."{table_name}" LIMIT :limit OFFSET :offset')
 
         with engine.connect() as connection:
             # Get total count
@@ -458,6 +477,7 @@ def get_table_data():
             # Convert result rows to list of dicts and handle serialization
             data = []
             for row in result:
+                # RowMapping handles order as per the SELECT statement
                 row_dict = dict(row._mapping)
                 data.append(_serialize_data(row_dict))
 

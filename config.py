@@ -13,7 +13,7 @@ from flask_mail import Mail
 # load_dotenv()  
 
 
-# Define the path where the .env file is stored
+# # Define the path where the .env file is stored
 ENV_PATH = "/d01/def/app/server/.server_env"
 
 
@@ -53,17 +53,20 @@ def parse_expiry(value):
 
 invitation_expire_time = parse_expiry(os.getenv("INVITATION_ACCESS_TOKEN_EXPIRED_TIME", '1h')) 
 
+# Custom Celery Task class that runs tasks in Flask's application context
+class FlaskTask(Task):
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        # Use Flask's app context attached to the celery instance
+        with self.app.flask_app.app_context():
+            return self.run(*args, **kwargs)
+
 # Function to initialize and configure Celery with Flask
 def celery_init_app(app: Flask) -> Celery:
-    # Define a custom Celery Task class that runs tasks in Flask's application context
-    class FlaskTask(Task):
-        def __call__(self, *args: object, **kwargs: object) -> object:
-            # Use Flask's app context to ensure proper access to app resources
-            with app.app_context():
-                return self.run(*args, **kwargs)  
-
     # Create a Celery instance, associating it with the Flask app name and custom task class
     celery_app = Celery(app.name, task_cls=FlaskTask)
+    
+    # Store the Flask app instance in the Celery app for context access
+    celery_app.flask_app = app
     
     # Configure Celery using the Flask app's configuration
     celery_app.config_from_object(app.config["CELERY"])
@@ -87,6 +90,7 @@ def celery_init_app(app: Flask) -> Celery:
 def create_app() -> Flask:
     # Create a Flask application instance
     app = Flask(__name__)
+    app.json.sort_keys = False
     app.config.from_mapping(
         CELERY=dict(
             broker_url=redis_url,                      
