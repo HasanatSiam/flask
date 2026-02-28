@@ -7,9 +7,10 @@ CRUD for workflows.
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
+import os
 
 from executors.extensions import db
-from executors.models import DefProcess
+from executors.models import DefProcess, DefAsyncTask
 from workflow_engine import WorkflowEngine, WorkflowError
 from workflow_engine.introspection import (
     introspect_inputs,
@@ -175,9 +176,6 @@ def get_required_params():
       "total_inputs": 1
     }
     """
-    from executors.models import DefAsyncTask
-    import os
-    
     try:
         payload = request.get_json() or {}
         nodes = payload.get('nodes', [])
@@ -501,8 +499,79 @@ def get_predecessor_outputs_api():
         
         if not decision_node_id:
             return jsonify({"error": "decision_node_id is required"}), 400
+
+        # Resolve task names to actual script paths so introspection works
+        script_base = os.getenv("SCRIPT_PATH_01", "")
+
+        def _resolve_script_path(path_value):
+            if not path_value or not isinstance(path_value, str):
+                return None
+
+            # Already a path-like value
+            if path_value.endswith('.py') or os.path.sep in path_value or '/' in path_value:
+                if os.path.isabs(path_value):
+                    return path_value if os.path.isfile(path_value) else None
+                if script_base:
+                    full_path = os.path.join(script_base, path_value)
+                    if os.path.isfile(full_path):
+                        return full_path
+                return path_value if os.path.isfile(path_value) else None
+
+            # Task name fallback: {SCRIPT_PATH_01}/{task_name}.py
+            if script_base:
+                auto_path = os.path.join(script_base, f"{path_value}.py")
+                if os.path.isfile(auto_path):
+                    return auto_path
+            return None
+
+        task_names = []
+        for node in nodes:
+            node_data = node.get('data', {}) or {}
+            task_name = node_data.get('step_function') or node_data.get('task_name')
+            if task_name:
+                task_names.append(task_name)
+
+        script_path_map = {}
+        if task_names:
+            unique_names = list(set(task_names))
+            try:
+                tasks = DefAsyncTask.query.filter(DefAsyncTask.task_name.in_(unique_names)).all()
+                for task in tasks:
+                    path_value = task.script_path or task.script_name
+                    resolved = _resolve_script_path(path_value)
+                    if resolved:
+                        script_path_map[task.task_name] = resolved
+            except Exception:
+                pass
+
+            # Filesystem fallback for unresolved names
+            for task_name in unique_names:
+                if task_name not in script_path_map:
+                    resolved = _resolve_script_path(task_name)
+                    if resolved:
+                        script_path_map[task_name] = resolved
+
+        resolved_nodes = []
+        for node in nodes:
+            node_copy = dict(node)
+            node_data = dict(node.get('data', {}) or {})
+
+            step_function = node_data.get('step_function')
+            task_name = node_data.get('task_name')
+
+            resolved = _resolve_script_path(step_function)
+            if not resolved and task_name:
+                resolved = script_path_map.get(task_name)
+            if not resolved and step_function:
+                resolved = script_path_map.get(step_function)
+
+            if resolved:
+                node_data['step_function'] = resolved
+
+            node_copy['data'] = node_data
+            resolved_nodes.append(node_copy)
             
-        fields = get_predecessor_outputs(nodes, edges, decision_node_id)
+        fields = get_predecessor_outputs(resolved_nodes, edges, decision_node_id)
         
         return jsonify({"fields": fields}), 200
         
