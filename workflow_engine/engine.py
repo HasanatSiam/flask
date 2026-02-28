@@ -18,6 +18,21 @@ from executors import run_script, bash_script, execute_procedure, execute_functi
 logger = logging.getLogger(__name__)
 
 
+# Safe comparison operators for decision nodes
+SAFE_OPERATORS = {
+    '==':           lambda a, b: str(a).strip().lower() == str(b).strip().lower(),
+    '!=':           lambda a, b: str(a).strip().lower() != str(b).strip().lower(),
+    '>':            lambda a, b: float(a) > float(b),
+    '>=':           lambda a, b: float(a) >= float(b),
+    '<':            lambda a, b: float(a) < float(b),
+    '<=':           lambda a, b: float(a) <= float(b),
+    'contains':     lambda a, b: str(b).lower() in str(a).lower(),
+    'not_contains': lambda a, b: str(b).lower() not in str(a).lower(),
+    'is_empty':     lambda a, b: not a,
+    'is_not_empty': lambda a, b: bool(a),
+}
+
+
 # Executor registry
 EXECUTORS = {
     'executors.python.execute': run_script,
@@ -300,13 +315,33 @@ class WorkflowEngine:
                 if result.get('result') and isinstance(result['result'], dict):
                     context.update(result['result'])
                 
+                # Check if we need to break for Stop node
                 node_type_config = DefProcessNodeType.query.filter_by(shape_name=node.get('data', {}).get('type')).first()
                 if node_type_config and node_type_config.behavior == 'EVENT' and node.get('data', {}).get('type') == 'Stop':
                     break 
                     
-                next_nodes = self._get_next_nodes(node['id'])
-                if next_nodes:
-                    current_nodes.append(next_nodes[0])
+                # Decision / Gateway Logic
+                if node_type_config and node_type_config.behavior == 'GATEWAY':
+                    try:
+                        target_id = self._evaluate_decision(node, context)
+                        target_node = self._nodes.get(target_id)
+                        if target_node:
+                            current_nodes.append(target_node)
+                        else:
+                            execution_record.error_message = f"Gateway target node '{target_id}' not found"
+                            execution_record.execution_status = 'FAILED'
+                            db.session.commit()
+                            return
+                    except Exception as e:
+                        execution_record.error_message = f"Gateway evaluation error: {str(e)}"
+                        execution_record.execution_status = 'FAILED'
+                        db.session.commit()
+                        return
+                else:
+                    # Default linear flow
+                    next_nodes = self._get_next_nodes(node['id'])
+                    if next_nodes:
+                        current_nodes.append(next_nodes[0])
             
             # Success
             execution_record.execution_status = 'COMPLETED'
@@ -321,6 +356,65 @@ class WorkflowEngine:
             execution_record.error_message = str(e)
             db.session.commit()
             raise
+
+
+
+    def _evaluate_condition(self, edge: dict, context: dict) -> bool:
+        """Evaluate a single edge's condition against context."""
+        condition = (edge.get('data') or {}).get('condition', {})
+        
+        # If it's the default branch, we handled it in _evaluate_decision (it's the fallback)
+        if not condition or condition.get('is_default'):
+            return False
+
+        field = condition.get('field', '')
+        operator = condition.get('operator', '')
+        value = condition.get('value', '')
+        
+        # Manual input or Dropdown input - both result in a string key 'field'
+        field_val = context.get(field)
+        
+        # If field is missing from context, usually default to empty string or None handling
+        if field_val is None:
+            field_val = ''
+
+        op_fn = SAFE_OPERATORS.get(operator)
+        if not op_fn:
+            return False
+            
+        try:
+            return op_fn(field_val, value)
+        except (ValueError, TypeError):
+            # Type mismatch (e.g. comparing string "abc" > 100) -> safely return False
+            return False
+
+    def _evaluate_decision(self, node: dict, context: dict) -> str:
+        """Evaluate decision node, return target node ID."""
+        edges = self._edges_by_source.get(node['id'], [])
+        default_edge = None
+        
+        for edge in edges:
+            condition = (edge.get('data') or {}).get('condition', {})
+            
+            # Check for default/fallback flag
+            if condition.get('is_default'):
+                default_edge = edge
+                continue
+            
+            # Check explicit condition
+            if self._evaluate_condition(edge, context):
+                return edge['target']  # First match wins
+        
+        # Fallback priority:
+        # 1. Marked default edge
+        # 2. First edge in list (Robustness fallback)
+        if default_edge:
+            return default_edge['target']
+        
+        if edges:
+            return edges[0]['target']
+            
+        raise Exception(f"Decision node '{node.get('data',{}).get('label')}' has no outgoing edges")
 
     def run(self, process_id: int, context: dict = None, user_id: int = None,
             on_task_complete: Callable[[dict], None] = None) -> dict:

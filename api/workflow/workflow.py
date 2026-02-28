@@ -15,7 +15,8 @@ from workflow_engine.introspection import (
     introspect_inputs,
     introspect_outputs,
     batch_db_defined_inputs,
-    build_predecessors
+    build_predecessors,
+    get_predecessor_outputs
 )
 
 from . import workflow_bp
@@ -484,3 +485,26 @@ def run_adhoc_workflow():
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": "System error during startup", "error": str(e)}), 500
+
+
+@workflow_bp.route('/workflow/predecessor_outputs', methods=['POST'])
+@jwt_required()
+def get_predecessor_outputs_api():
+    """
+    Get available output fields from predecessor nodes for a given decision node.
+    """
+    try:
+        data = request.json or {}
+        nodes = data.get('nodes', [])
+        edges = data.get('edges', [])
+        decision_node_id = data.get('decision_node_id')
+        
+        if not decision_node_id:
+            return jsonify({"error": "decision_node_id is required"}), 400
+            
+        fields = get_predecessor_outputs(nodes, edges, decision_node_id)
+        
+        return jsonify({"fields": fields}), 200
+        
+    except Exception as e:
+        return jsonify({"message": "Error introspecting predecessor outputs", "error": str(e)}), 500
