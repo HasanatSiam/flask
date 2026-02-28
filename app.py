@@ -6,7 +6,7 @@ from flask_jwt_extended import JWTManager
 
 
 from flask_cors import CORS 
-from config import redis_url
+from config import redis_url, allowed_origins
 # from executors.extensions import db
 
 # db.init_app(flask_app)
@@ -22,7 +22,7 @@ jwt = JWTManager(flask_app)
 
 CORS(
     flask_app,
-    resources={r"/*": {"origins": "http://localhost:5173"}},
+    resources={r"/*": {"origins": allowed_origins}},
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization"],
     expose_headers=["Content-Type", "Authorization"],
