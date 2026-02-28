@@ -4,6 +4,7 @@ from flask import Flask
 import redis                     
 import psycopg2                  
 import os                        
+import json
 from dotenv import load_dotenv   
 import ssl
 from datetime import timedelta
@@ -13,7 +14,7 @@ from flask_mail import Mail
 # load_dotenv()  
 
 
-# # Define the path where the .env file is stored
+# Define the path where the .env file is stored
 ENV_PATH = "/d01/def/app/server/.server_env"
 
 
@@ -32,6 +33,16 @@ database_url_test = os.environ.get("DATABASE_URL_TEST")  # Test DB for frontend 
 FLOWER_URL = os.environ.get("FLOWER_URL")
 crypto_secret_key = os.getenv("CRYPTO_SECRET_KEY")
 jwt_secret_key = os.getenv("JWT_SECRET_ACCESS_TOKEN")
+
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "[\"http://localhost:5173\"]")
+try:
+    allowed_origins = json.loads(allowed_origins_raw)
+    if not isinstance(allowed_origins, list):
+        allowed_origins = ["http://localhost:5173"]
+except json.JSONDecodeError:
+    allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+    if not allowed_origins:
+        allowed_origins = ["http://localhost:5173"]
  
 
 def parse_expiry(value):
