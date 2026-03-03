@@ -167,8 +167,9 @@ def get_predecessor_outputs(nodes: list, edges: list, target_node_id: str) -> li
                  if k not in seen_fields:
                      seen_fields.add(k)
                      fields.append({
-                         'name': k,
-                         'source_label': node.get('data', {}).get('label', 'Unknown Node')
+                         'label': k.replace('_', ' ').title(),
+                         'value': k,
+                         'NodeSourceLabel': node.get('data', {}).get('label', 'Unknown Node')
                      })
                      
     return fields

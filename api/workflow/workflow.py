@@ -572,8 +572,22 @@ def get_predecessor_outputs_api():
             resolved_nodes.append(node_copy)
             
         fields = get_predecessor_outputs(resolved_nodes, edges, decision_node_id)
+
+        # Operators list — single source of truth (matches SAFE_OPERATORS in engine.py)
+        operators = [
+            {"label": "Equals (==)",      "value": "=="},
+            {"label": "Not Equals (!=)",   "value": "!="},
+            {"label": "Greater Than (>)",  "value": ">"},
+            {"label": "Greater or Equal (>=)", "value": ">="},
+            {"label": "Less Than (<)",     "value": "<"},
+            {"label": "Less or Equal (<=)","value": "<="},
+            {"label": "Contains",          "value": "contains"},
+            {"label": "Not Contains",      "value": "not_contains"},
+            {"label": "Is Empty",          "value": "is_empty"},
+            {"label": "Is Not Empty",      "value": "is_not_empty"},
+        ]
         
-        return jsonify({"fields": fields}), 200
+        return jsonify({"fields": fields, "operators": operators}), 200
         
     except Exception as e:
         return jsonify({"message": "Error introspecting predecessor outputs", "error": str(e)}), 500
