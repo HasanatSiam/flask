@@ -45,6 +45,12 @@ def _fetch_all_items(app):
             ) w
             UNION ALL
             SELECT * FROM (
+                SELECT 'async_task' AS section, CAST(def_task_id AS VARCHAR)               AS id, user_task_name     AS name, creation_date 
+                FROM def_async_tasks 
+                ORDER BY creation_date DESC LIMIT 4
+            ) at
+            UNION ALL
+            SELECT * FROM (
                 SELECT 'schedule'   AS section, CAST(def_task_sche_id AS VARCHAR)          AS id, user_schedule_name AS name, creation_date 
                 FROM def_async_task_schedules 
                 WHERE cancelled_yn = 'N' AND (schedule_type != 'IMMEDIATE' OR schedule_type IS NULL)
@@ -76,7 +82,7 @@ def _fetch_all_items(app):
             ) en
         """)).fetchall()
 
-        result = {k: [] for k in ['workflow', 'schedule', 'executor', 'user', 'tenant', 'enterprise']}
+        result = {k: [] for k in ['workflow', 'async_task', 'schedule', 'executor', 'user', 'tenant', 'enterprise']}
         for row in rows:
             result[row.section].append({
                 "id": row.id,
@@ -91,12 +97,8 @@ def _fetch_all_items(app):
 @cache.cached(timeout=60, key_prefix='dashboard_summary')
 def get_dashboard_summary():
     try:
-        timings = {}
-
         # Capture the real app instance BEFORE entering threads
         app = current_app._get_current_object()  # ← key line
-
-        t_start = time.time()
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             future_counts = executor.submit(_fetch_counts, app)   # pass app
@@ -105,18 +107,19 @@ def get_dashboard_summary():
             counts = future_counts.result()
             items  = future_items.result()
 
-        timings['total'] = round(time.time() - t_start, 3)
-
         return jsonify({
-            "_debug_timings": timings,
+            "async_tasks": {
+                "total":     counts.tasks_total,
+                "active":    counts.tasks_active,
+                "cancelled": counts.tasks_inactive,
+                "srs":       counts.tasks_srs,
+                "sf":        counts.tasks_sf,
+                "items":     items['async_task']
+            },
             "scheduled_tasks": {
                 "total":     counts.schedules_total,
-                "active":    counts.tasks_active,
-                "inactive":  counts.tasks_inactive,
                 "scheduled": counts.schedules_scheduled,
                 "cancelled": counts.schedules_cancelled,
-                "srs_tasks": counts.tasks_srs,
-                "sf_tasks":  counts.tasks_sf,
                 "items":     items['schedule']
             },
             "executors":   {"total": counts.executors,   "items": items['executor']},
