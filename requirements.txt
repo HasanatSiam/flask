@@ -22,3 +22,4 @@ flask_mail
 blueprint
 Flask-Mail
 pycryptodome
+flask-caching

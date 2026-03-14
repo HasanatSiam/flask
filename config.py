@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import ssl
 from datetime import timedelta
 from flask_mail import Mail  
+from executors.extensions import cache
 
 # Load environment variables from the .env file
 # load_dotenv()  
@@ -144,6 +145,12 @@ def create_app() -> Flask:
     
     # Initialize Flask-Mail
     mail.init_app(app)
+
+    # Initialize Cache
+    app.config["CACHE_TYPE"] = "RedisCache"
+    app.config["CACHE_REDIS_URL"] = redis_url
+    app.config["CACHE_DEFAULT_TIMEOUT"] = 60
+    cache.init_app(app)
 
     # Return the fully configured Flask app
     return app
