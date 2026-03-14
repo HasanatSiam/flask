@@ -12,6 +12,7 @@ from .messages import messages_bp
 from .data_sources import data_sources_bp
 from .data_modeling import data_modeling_bp
 from .workflow import workflow_bp
+from .dashboard import dashboard_bp
 
 def register_blueprints(app):
     app.register_blueprint(users_bp)
@@ -27,4 +28,5 @@ def register_blueprints(app):
     app.register_blueprint(data_sources_bp)
     app.register_blueprint(data_modeling_bp)
     app.register_blueprint(workflow_bp)
+    app.register_blueprint(dashboard_bp)
 

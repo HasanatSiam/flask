@@ -39,6 +39,13 @@ if database_url_test:
         "db_test": database_url_test
     }
 
+flask_app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_size": 10,
+    "max_overflow": 20,
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+}
+
 db.init_app(flask_app)
     
 celery_app = flask_app.extensions["celery"]

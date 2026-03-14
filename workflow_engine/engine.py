@@ -361,15 +361,15 @@ class WorkflowEngine:
 
     def _evaluate_condition(self, edge: dict, context: dict) -> bool:
         """Evaluate a single edge's condition against context."""
-        condition = (edge.get('data') or {}).get('condition', {})
+        data = edge.get('data') or {}
         
         # If it's the default branch, we handled it in _evaluate_decision (it's the fallback)
-        if not condition or condition.get('is_default'):
+        if not data or data.get('is_default'):
             return False
 
-        field = condition.get('field', '')
-        operator = condition.get('operator', '')
-        value = condition.get('value', '')
+        field = data.get('field', '')
+        operator = data.get('operator', '')
+        value = data.get('value', '')
         
         # Manual input or Dropdown input - both result in a string key 'field'
         field_val = context.get(field)
@@ -394,10 +394,10 @@ class WorkflowEngine:
         default_edge = None
         
         for edge in edges:
-            condition = (edge.get('data') or {}).get('condition', {})
+            data = edge.get('data') or {}
             
             # Check for default/fallback flag
-            if condition.get('is_default'):
+            if data.get('is_default'):
                 default_edge = edge
                 continue
             
