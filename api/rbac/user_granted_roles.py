@@ -98,6 +98,20 @@ def get_user_granted_roles():
     try:
         user_id = request.args.get('user_id', type=int)
         role_id = request.args.get('role_id', type=int)
+        tenant_id = request.args.get('tenant_id', type=int)
+
+        # If both provided -> single-record lookup (consistent with privileges)
+        if user_id is not None and role_id is not None:
+            query = DefUserGrantedRole.query.filter_by(user_id=user_id, role_id=role_id)
+            if tenant_id is not None:
+                query = query.join(DefUser).filter(DefUser.tenant_id == tenant_id)
+            
+            record = query.first()
+            if not record:
+                return make_response(jsonify({
+                    "error": f"No mapping found for user_id={user_id} and role_id={role_id}"
+                }), 404)
+            return make_response(jsonify(record.json()), 200)
 
         query = DefUserGrantedRole.query
 
@@ -109,14 +123,11 @@ def get_user_granted_roles():
         if role_id:
             query = query.filter_by(role_id=role_id)
 
+        # Filter by tenant_id if provided
+        if tenant_id is not None:
+            query = query.join(DefUser).filter(DefUser.tenant_id == tenant_id)
+
         results = query.all()
-
-        # If both params given and no record found → return 404
-        if user_id and role_id and not results:
-            return make_response(jsonify({
-                "error": f"No mapping found for user_id={user_id} and role_id={role_id}"
-            }), 404)
-
         return make_response(jsonify([m.json() for m in results]), 200)
 
     except Exception as e:
