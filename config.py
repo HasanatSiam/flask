@@ -12,17 +12,17 @@ from flask_mail import Mail
 from executors.extensions import cache
 
 # Load environment variables from the .env file
-# load_dotenv()  
+load_dotenv()  
 
 
 # Define the path where the .env file is stored
-ENV_PATH = "/d01/def/app/server/.server_env"
+# ENV_PATH = "/d01/def/app/server/.server_env"
 
 
-if os.path.exists(ENV_PATH):
-    load_dotenv(ENV_PATH)
-else:
-    print(f"Error: The .env file was not found at {ENV_PATH}")
+# if os.path.exists(ENV_PATH):
+#     load_dotenv(ENV_PATH)
+# else:
+#     print(f"Error: The .env file was not found at {ENV_PATH}")
 
 # Initialize Flask-Mail globally
 mail = Mail()
@@ -121,7 +121,7 @@ def create_app() -> Flask:
         JWT_SECRET_KEY = os.getenv('JWT_SECRET_ACCESS_TOKEN'),
         JWT_ACCESS_TOKEN_EXPIRES = parse_expiry(os.getenv('ACCESS_TOKEN_EXPIRED_TIME', '15m')),
         JWT_REFRESH_TOKEN_EXPIRES = parse_expiry(os.getenv('REFRESH_TOKEN_EXPIRED_TIME', '30d')),
-        JWT_TOKEN_LOCATION = ['headers', 'query_string'],  # Support query param for SSE EventSource
+        JWT_TOKEN_LOCATION = ['headers', 'query_string', 'cookies'],  # Support headers, query param, and cookies
         JWT_QUERY_STRING_NAME = 'access_token',  # ?access_token=<token>
         FLOWER_URL = FLOWER_URL,
 
