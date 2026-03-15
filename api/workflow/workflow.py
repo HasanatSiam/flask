@@ -8,6 +8,8 @@ from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 import os
+from threading import Thread
+from flask import current_app
 
 from executors.extensions import db
 from executors.models import DefProcess, DefAsyncTask
@@ -29,10 +31,20 @@ def create_workflow():
     try:
         data = request.json
         process_name = data.get('process_name')
+        
+        # Accept nested 'process_structure' OR flat 'nodes'/'edges'
         process_structure = data.get('process_structure')
+        if not process_structure and ('nodes' in data or 'edges' in data):
+            process_structure = {
+                "nodes": data.get('nodes', []),
+                "edges": data.get('edges', [])
+            }
         
         if not process_name:
             return jsonify({"error": "process_name is required"}), 400
+            
+        if not process_structure:
+            return jsonify({"error": "Workflow structure is required"}), 400
         
         # Check for duplicate name if needed (optional)
         existing = DefProcess.query.filter_by(process_name=process_name).first()
@@ -77,6 +89,13 @@ def update_workflow():
         
         if 'process_structure' in data:
             workflow.process_structure = data['process_structure']
+        elif 'nodes' in data or 'edges' in data:
+             # Support updating via flat payload
+             current = workflow.process_structure or {"nodes": [], "edges": []}
+             workflow.process_structure = {
+                 "nodes": data.get('nodes', current.get('nodes', [])),
+                 "edges": data.get('edges', current.get('edges', []))
+             }
         
         workflow.last_updated_by = get_jwt_identity()
         workflow.last_update_date = datetime.utcnow()
@@ -97,14 +116,19 @@ def get_all_workflows():
         process_id = request.args.get('process_id')
         process_name = request.args.get('process_name')
         
-        query = DefProcess.query
-        
         if process_id:
-            query = query.filter_by(process_id=process_id)
-        if process_name:
-            query = query.filter_by(process_name=process_name)
+            workflow = DefProcess.query.get(process_id)
+            if not workflow:
+                return jsonify({"error": "Workflow not found"}), 404
+            return jsonify({"result": workflow.json()}), 200
             
-        workflows = query.order_by(DefProcess.creation_date.desc()).all()
+        if process_name:
+            workflow = DefProcess.query.filter_by(process_name=process_name).first()
+            if not workflow:
+                return jsonify({"error": "Workflow not found"}), 404
+            return jsonify({"result": workflow.json()}), 200
+            
+        workflows = DefProcess.query.order_by(DefProcess.creation_date.desc()).all()
         return jsonify({"result": [w.json() for w in workflows]}), 200
     except Exception as e:
         return jsonify({"message": "Error fetching workflows", "error": str(e)}), 500
@@ -141,7 +165,18 @@ def delete_workflow():
 def validate_workflow():
     try:
         data = request.get_json(silent=True)
-        if not data or 'process_structure' not in data:
+        if not data:
+             return jsonify({"error": "No data provided"}), 400
+             
+        # Extract structure
+        process_structure = data.get('process_structure')
+        if not process_structure and ('nodes' in data or 'edges' in data):
+             process_structure = {
+                 "nodes": data.get('nodes', []),
+                 "edges": data.get('edges', [])
+             }
+             
+        if not process_structure:
              return jsonify({"error": "process_structure is required"}), 400
              
         engine = WorkflowEngine()
@@ -372,10 +407,7 @@ def run_workflow(process_id):
     Run a workflow asynchronously.
     Returns the execution_id immediately.
     """
-    try:
-        from threading import Thread
-        from flask import current_app
-        
+    try:  
         context = {}
         data = request.get_json(silent=True)
         if data:
@@ -434,10 +466,7 @@ def run_adhoc_workflow():
         "status": "RUNNING"
     }
     """
-    try:
-        from threading import Thread
-        from flask import current_app
-        
+    try:        
         data = request.get_json(silent=True)
         if not data or 'process_structure' not in data:
             return jsonify({"error": "process_structure is required"}), 400
