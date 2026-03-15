@@ -59,13 +59,20 @@ def login():
         access_token = create_access_token(identity=str(user_id), additional_claims=additional_claims)
         refresh_token = create_refresh_token(identity=str(user_id))
 
-        return jsonify({
+        response = make_response(jsonify({
             "isLoggedIn": True,
             "user_id": user_id,
             "access_token": access_token,
             "refresh_token": refresh_token,
             "message": "Log in Successful."
-        }), 200
+        }))
+        
+        # Setting cookies for both access and refresh tokens
+        # httponly=True makes them inaccessible to JavaScript (security best practice)
+        response.set_cookie('access_token', access_token, httponly=True, samesite='Lax')
+        response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='Lax')
+        
+        return response, 200
 
     except Exception as e:
         return jsonify({"message": str(e)}), 500
