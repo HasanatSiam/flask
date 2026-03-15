@@ -145,6 +145,11 @@ def get_users_unified():
         if user_name:
             query = query.filter(DefUsersView.user_name.ilike(f'%{user_name}%'))
 
+        # Tenant filter
+        tenant_id = request.args.get('tenant_id', type=int)
+        if tenant_id:
+            query = query.filter_by(tenant_id=tenant_id)
+
         # Ordering
         query = query.order_by(DefUsersView.user_id.desc())
 

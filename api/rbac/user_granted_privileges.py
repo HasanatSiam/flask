@@ -98,25 +98,30 @@ def get_user_granted_privileges():
     try:
         user_id = request.args.get("user_id", type=int)
         privilege_id = request.args.get("privilege_id", type=int)
+        tenant_id = request.args.get("tenant_id", type=int)
 
-        # If both provided -> single-record lookup
+        # If both provided -> single-record lookup (RESTORED behavior)
         if user_id is not None and privilege_id is not None:
-            record = DefUserGrantedPrivilege.query.filter_by(
-                user_id=user_id, privilege_id=privilege_id
-            ).first()
+            query = DefUserGrantedPrivilege.query.filter_by(user_id=user_id, privilege_id=privilege_id)
+            if tenant_id is not None:
+                query = query.join(DefUser).filter(DefUser.tenant_id == tenant_id)
+            
+            record = query.first()
             if not record:
                 return make_response(jsonify({
                     "error": f"No mapping found for user_id={user_id} and privilege_id={privilege_id}"
                 }), 404)
             return make_response(jsonify(record.json()), 200)
 
-        # Otherwise build a list query (may be empty)
+        # Otherwise build a list query
         query = DefUserGrantedPrivilege.query
 
         if user_id is not None:
             query = query.filter_by(user_id=user_id)
         if privilege_id is not None:
             query = query.filter_by(privilege_id=privilege_id)
+        if tenant_id is not None:
+            query = query.join(DefUser).filter(DefUser.tenant_id == tenant_id)
 
         records = query.order_by(DefUserGrantedPrivilege.creation_date.desc()).all()
         return make_response(jsonify([r.json() for r in records]), 200)

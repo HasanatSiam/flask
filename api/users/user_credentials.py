@@ -1,7 +1,7 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import create_access_token, decode_token
+from flask_jwt_extended import create_access_token, create_refresh_token, decode_token
 from sqlalchemy import or_, func
 from datetime import datetime, timedelta
 from flask_mail import Message as MailMessage
@@ -56,11 +56,14 @@ def login():
 
 
         access_token = create_access_token(identity=str(user_id))
+        refresh_token = create_refresh_token(identity=str(user_id))
 
         return jsonify({
             "isLoggedIn": True,
             "user_id": user_id,
-            "access_token": access_token
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "message": "Log in Successful."
         }), 200
 
     except Exception as e:
