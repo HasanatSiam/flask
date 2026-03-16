@@ -23,6 +23,7 @@ from utils.auth import role_required
 # Create a tenant
 @tenant_enterprise_bp.route('/def_tenants', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_tenant():
     try:
        data = request.get_json()
@@ -42,7 +43,7 @@ def create_tenant():
            )
        db.session.add(new_tenant)
        db.session.commit()
-       return make_response(jsonify({"message": "Added successfully"}), 201)
+       return make_response(jsonify({"message": "Added successfully", "result": new_tenant.json()}), 201)
    
     except IntegrityError as e:
         return make_response(jsonify({"message": "Error creating Tenant", "error": "Tenant already exists"}), 409)
@@ -56,6 +57,7 @@ def create_tenant():
 
 @tenant_enterprise_bp.route('/def_tenants', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_tenants():
     try:
         tenants = DefTenant.query.order_by(
@@ -132,6 +134,7 @@ def search_tenants(page, limit):
 
 @tenant_enterprise_bp.route('/tenants/<int:tenant_id>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_tenant(tenant_id):
     try:
         tenant = DefTenant.query.filter_by(tenant_id=tenant_id).first()
@@ -160,7 +163,7 @@ def update_tenant():
             tenant.last_update_date = datetime.utcnow()
 
             db.session.commit()
-            return make_response(jsonify({"message": "Edited successfully"}), 200)
+            return make_response(jsonify({"message": "Edited successfully", "result": tenant.json()}), 200)
         return make_response(jsonify({"message": "Tenant not found"}), 404)
     except Exception as e:
         return make_response(jsonify({"message": "Error updating Tenant", "error": str(e)}), 500)
