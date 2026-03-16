@@ -122,6 +122,9 @@ def create_app() -> Flask:
         JWT_ACCESS_TOKEN_EXPIRES = parse_expiry(os.getenv('ACCESS_TOKEN_EXPIRED_TIME', '15m')),
         JWT_REFRESH_TOKEN_EXPIRES = parse_expiry(os.getenv('REFRESH_TOKEN_EXPIRED_TIME', '30d')),
         JWT_TOKEN_LOCATION = ['headers', 'query_string', 'cookies'],  # Support headers, query param, and cookies
+        JWT_ACCESS_COOKIE_NAME = 'access_token',
+        JWT_REFRESH_COOKIE_NAME = 'refresh_token',
+        JWT_COOKIE_CSRF_PROTECT = True,  # Enable CSRF protection for cookie-based access
         JWT_QUERY_STRING_NAME = 'access_token',  # ?access_token=<token>
         FLOWER_URL = FLOWER_URL,
 

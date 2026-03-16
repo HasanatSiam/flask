@@ -8,4 +8,5 @@ from .user_credentials import *
 from .users import *
 from .access_profiles import *
 from .new_user_invitations import *
+from .forgot_password import *
 
