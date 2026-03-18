@@ -11,11 +11,13 @@ from executors.models import (
 )
 
 from . import global_conditions_bp
+from utils.auth import role_required
 
 
 # def_global_condition_logics
 @global_conditions_bp.route('/def_global_condition_logics', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_global_condition_logic():
     try:
         def_global_condition_logic_id = request.json.get('def_global_condition_logic_id')
@@ -59,6 +61,7 @@ def create_def_global_condition_logic():
 
 @global_conditions_bp.route('/def_global_condition_logics/upsert', methods=['POST'])
 @jwt_required()
+@role_required()
 def upsert_def_global_condition_logics():
     try:
         data_list = request.get_json()
@@ -166,6 +169,7 @@ def upsert_def_global_condition_logics():
 
 @global_conditions_bp.route('/def_global_condition_logics', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_global_condition_logics():
     try:
         def_global_condition_logic_id = request.args.get('def_global_condition_logic_id', type=int)
@@ -202,6 +206,7 @@ def get_def_global_condition_logics():
 
 @global_conditions_bp.route('/def_global_condition_logics', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_def_global_condition_logic():
     try:
         def_global_condition_logic_id = request.args.get('def_global_condition_logic_id', type=int)
@@ -226,6 +231,7 @@ def update_def_global_condition_logic():
 
 @global_conditions_bp.route('/def_global_condition_logics', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_def_global_condition_logic():
     try:
         def_global_condition_logic_id = request.args.get('def_global_condition_logic_id', type=int)

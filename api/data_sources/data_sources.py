@@ -10,11 +10,13 @@ from executors.models import (
 )
 
 from . import data_sources_bp
+from utils.auth import role_required
 
 
 #Def_Data_Sources
 @data_sources_bp.route('/def_data_sources', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_data_source():
     try:
         new_datasource = DefDataSource(
@@ -41,6 +43,7 @@ def create_def_data_source():
 
 @data_sources_bp.route('/def_data_sources', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_data_sources():
     try:
         def_data_source_id = request.args.get('def_data_source_id', type=int)
