@@ -15,6 +15,7 @@ from . import access_models_bp
 #def_access_models
 @access_models_bp.route('/def_access_models', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_access_models():
     try:
         datasource_name = request.json.get('datasource_name', None)
@@ -47,6 +48,7 @@ def create_def_access_models():
 
 @access_models_bp.route('/def_access_models', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_access_models():
     try:
         # Query parameters

@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 
 from executors.extensions import db
 from executors.models import (
@@ -15,6 +16,7 @@ from . import global_conditions_bp
 # def_global_conditions
 @global_conditions_bp.route('/def_global_conditions', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_global_condition():
     try:
         name        = request.json.get('name')
@@ -42,6 +44,7 @@ def create_def_global_condition():
 
 @global_conditions_bp.route('/def_global_conditions', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_global_conditions():
     try:
         # Query parameters
@@ -100,6 +103,7 @@ def get_def_global_conditions():
 
 @global_conditions_bp.route('/def_global_conditions', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_def_global_condition():
     try:
         def_global_condition_id = request.args.get('def_global_condition_id', type=int)
@@ -122,6 +126,7 @@ def update_def_global_condition():
 
 @global_conditions_bp.route('/def_global_conditions', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_def_global_condition():
     try:
         def_global_condition_id = request.args.get('def_global_condition_id', type=int)
@@ -140,6 +145,7 @@ def delete_def_global_condition():
 
 @global_conditions_bp.route('/def_global_conditions/cascade', methods=['DELETE'])
 @jwt_required()
+# @role_required()
 def cascade_delete_global_condition():
     try:
         # Get condition ID from query parameter
