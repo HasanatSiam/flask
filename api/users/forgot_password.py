@@ -66,7 +66,7 @@ def create_request():
         encrypted_req_id  = encrypt(str(req_obj.forgot_password_request_id), crypto_secret_key)
         encrypted_user_id = encrypt(str(user.user_id), crypto_secret_key)
 
-        reset_link = f"{REACT_ENDPOINT_URL}/reset-password/{encrypted_req_id}/{encrypted_user_id}/{encrypted_token}"
+        reset_link = f"{REACT_ENDPOINT_URL}/reset-password/{encrypted_req_id}/{encrypted_user_id}"
 
         # ------------------ Send Email ------------------
         try:
@@ -100,17 +100,18 @@ def create_request():
 def verify_request():
     try:
         encrypted_request_id = request.args.get("forgot_password_request_id")
-        encrypted_token      = request.args.get("access_token")
-
-        if not encrypted_request_id or not encrypted_token:
-            return jsonify({"message": "Missing forgot_password_request_id or access_token"}), 400
-
-        # ------------------ Decrypt ------------------
+        # ------------------ Decrypt ID ------------------
         try:
             request_id = int(decrypt(encrypted_request_id, crypto_secret_key))
-            token      = decrypt(encrypted_token, crypto_secret_key)
         except Exception:
             return jsonify({"is_valid": False, "message": "Invalid or corrupted link"}), 400
+
+        # ------------------ Get Token from DB (Best Practice) ------------------
+        req_obj = ForgotPasswordRequest.query.get(request_id)
+        if not req_obj or not req_obj.is_valid:
+            return jsonify({"is_valid": False, "message": "The request is invalid or expired"}), 200
+
+        token = decrypt(req_obj.access_token, crypto_secret_key)
 
         # ------------------ Decode JWT ------------------
         try:
@@ -150,33 +151,41 @@ def verify_request():
 def reset_forgot_password():
     data = request.json
 
-    request_id   = data.get("forgot_password_request_id")
-    temp_pass    = data.get("temporary_password")
-    new_password = data.get("password")
-    token        = data.get("access_token")
+    encrypted_request_id = data.get("forgot_password_request_id")
+    temp_pass            = data.get("temporary_password")
+    new_password         = data.get("password")
 
     try:
-        # ------------------ Decrypt & Decode JWT ------------------
-        decrypted_token    = decrypt(token, crypto_secret_key)
-        decoded            = decode_token(decrypted_token)
-        user_id_from_token = decoded.get("user_id")
+        # ------------------ Decrypt Request ID ------------------
+        try:
+            request_id = int(decrypt(encrypted_request_id, crypto_secret_key))
+        except Exception:
+            return jsonify({"is_success": False, "message": "Invalid or corrupted request ID."}), 400
 
-        if not user_id_from_token:
-            return jsonify({"is_success": False, "message": "Invalid token."}), 403
-
-        if decoded["exp"] < datetime.utcnow().timestamp():
-            return jsonify({"is_success": False, "message": "Reset link expired."}), 403
-
-        # ------------------ Find Password Reset Request ------------------
+        # ------------------ Find Password Reset Request & Get Token from DB ------------------
         req_obj = ForgotPasswordRequest.query.filter_by(
-            forgot_password_request_id=int(request_id),
-            request_by=user_id_from_token,
+            forgot_password_request_id=request_id,
             temporary_password=str(temp_pass),
             is_valid=True
         ).first()
 
         if not req_obj:
             return jsonify({"is_success": False, "message": "Invalid or expired temporary password."}), 400
+
+        # ------------------ Decrypt & Decode JWT from DB ------------------
+        try:
+            decrypted_token = decrypt(req_obj.access_token, crypto_secret_key)
+            decoded         = decode_token(decrypted_token)
+            user_id_from_token = decoded.get("user_id")
+        except Exception:
+            return jsonify({"is_success": False, "message": "The associated session token is invalid or corrupted."}), 400
+
+        # ------------------ Final Verification: Ensure User ID matches request ------------------
+        if not user_id_from_token or req_obj.request_by != user_id_from_token:
+            return jsonify({"is_success": False, "message": "This reset link does not match your user account."}), 403
+
+        if decoded.get("exp", 0) < datetime.utcnow().timestamp():
+            return jsonify({"is_success": False, "message": "The reset link has expired."}), 403
 
         # ------------------ Update User Password ------------------
         user = DefUserCredential.query.get(user_id_from_token)
