@@ -1,4 +1,5 @@
-from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
+from flask import request, jsonify, make_response
+from sqlalchemy import or_
 from datetime import datetime
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -79,7 +80,23 @@ def get_api_endpoints():
             return make_response(jsonify({"result": endpoint.json()}), 200)
 
         # Base query
-        query = DefApiEndpoint.query.order_by(DefApiEndpoint.api_endpoint_id.desc())
+        query = DefApiEndpoint.query
+
+        # Search filter
+        search_term = request.args.get('api_endpoint', '').strip()
+        if search_term:
+            search_underscore = search_term.replace(' ', '_')
+            search_space = search_term.replace('_', ' ')
+            query = query.filter(
+                or_(
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_term}%'),
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_underscore}%'),
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_space}%')
+                )
+            )
+
+        # Ordering
+        query = query.order_by(DefApiEndpoint.api_endpoint_id.desc())
 
         # Pagination
         page = request.args.get('page', type=int)
