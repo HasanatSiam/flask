@@ -6,7 +6,7 @@ import random
 
 from config import crypto_secret_key, invitation_expire_time, mail, REACT_ENDPOINT_URL
 from utils.auth import encrypt, decrypt
-from executors.models import DefUsersView, ForgotPasswordRequest, DefUserCredential
+from executors.models import DefUsersView, DefForgotPasswordRequest, DefUserCredential
 from executors.extensions import db
 from werkzeug.security import generate_password_hash
 from . import users_bp
@@ -51,7 +51,7 @@ def create_request():
 
         # ------------------ Create Forgot Password Request ------------------
         temp_password = str(random.randint(10000000, 99999999))
-        req_obj = ForgotPasswordRequest(
+        req_obj = DefForgotPasswordRequest(
             request_by=user.user_id,
             email=user.email_address,
             temporary_password=temp_password,
@@ -63,10 +63,8 @@ def create_request():
         db.session.add(req_obj)
         db.session.commit()
 
-        encrypted_req_id  = encrypt(str(req_obj.forgot_password_request_id), crypto_secret_key)
-        encrypted_user_id = encrypt(str(user.user_id), crypto_secret_key)
-
-        reset_link = f"{REACT_ENDPOINT_URL}/reset-password/{encrypted_req_id}/{encrypted_user_id}"
+        encrypted_req_id = encrypt(str(req_obj.forgot_password_request_id), crypto_secret_key)
+        reset_link = f"{REACT_ENDPOINT_URL}/reset-password/{encrypted_req_id}"
 
         # ------------------ Send Email ------------------
         try:
@@ -107,7 +105,7 @@ def verify_request():
             return jsonify({"is_valid": False, "message": "Invalid or corrupted link"}), 400
 
         # ------------------ Get Token from DB (Best Practice) ------------------
-        req_obj = ForgotPasswordRequest.query.get(request_id)
+        req_obj = DefForgotPasswordRequest.query.get(request_id)
         if not req_obj or not req_obj.is_valid:
             return jsonify({"is_valid": False, "message": "The request is invalid or expired"}), 200
 
@@ -124,10 +122,10 @@ def verify_request():
             return jsonify({"is_valid": False, "message": "Invalid token payload"}), 403
 
         # ------------------ Verify request in DB ------------------
-        req_obj = ForgotPasswordRequest.query.filter(
-            ForgotPasswordRequest.forgot_password_request_id == request_id,
-            ForgotPasswordRequest.request_by == user_id_from_token,
-            ForgotPasswordRequest.is_valid == True
+        req_obj = DefForgotPasswordRequest.query.filter(
+            DefForgotPasswordRequest.forgot_password_request_id == request_id,
+            DefForgotPasswordRequest.request_by == user_id_from_token,
+            DefForgotPasswordRequest.is_valid == True
         ).first()
 
         if not req_obj:
@@ -163,7 +161,7 @@ def reset_forgot_password():
             return jsonify({"is_success": False, "message": "Invalid or corrupted request ID."}), 400
 
         # ------------------ Find Password Reset Request & Get Token from DB ------------------
-        req_obj = ForgotPasswordRequest.query.filter_by(
+        req_obj = DefForgotPasswordRequest.query.filter_by(
             forgot_password_request_id=request_id,
             temporary_password=str(temp_pass),
             is_valid=True

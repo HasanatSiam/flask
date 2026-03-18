@@ -1561,7 +1561,7 @@ class DefUserGrantedRolesPrivilegesV(db.Model):
             'granted_privileges': self.granted_privileges
         }
 
-class ForgotPasswordRequest(db.Model):
+class DefForgotPasswordRequest(db.Model):
     __tablename__  = "def_forgot_password_requests"
     __table_args__ = {"schema": "apps"}
 
