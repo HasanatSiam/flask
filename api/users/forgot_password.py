@@ -4,7 +4,7 @@ from flask_mail import Message as MailMessage
 from datetime import datetime
 import random
 
-from config import crypto_secret_key, invitation_expire_time, mail
+from config import crypto_secret_key, invitation_expire_time, mail, REACT_ENDPOINT_URL
 from utils.auth import encrypt, decrypt
 from executors.models import DefUsersView, ForgotPasswordRequest, DefUserCredential
 from executors.extensions import db
@@ -66,7 +66,7 @@ def create_request():
         encrypted_req_id  = encrypt(str(req_obj.forgot_password_request_id), crypto_secret_key)
         encrypted_user_id = encrypt(str(user.user_id), crypto_secret_key)
 
-        reset_link = f"{request.host_url}reset-password/{encrypted_req_id}/{encrypted_user_id}/{encrypted_token}"
+        reset_link = f"{REACT_ENDPOINT_URL}/reset-password/{encrypted_req_id}/{encrypted_user_id}/{encrypted_token}"
 
         # ------------------ Send Email ------------------
         try:
