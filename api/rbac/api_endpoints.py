@@ -6,7 +6,8 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from executors.extensions import db
 from executors.models import (
     DefPrivilege,
-    DefApiEndpoint
+    DefApiEndpoint,
+    DefApiEndpointRole
 )
 
 from utils.auth import role_required
@@ -165,22 +166,45 @@ def update_api_endpoint():
 @jwt_required()
 def delete_api_endpoint():
     try:
-        api_endpoint_id = request.args.get("api_endpoint_id", type=int)
-
-        # Validate required param
-        if api_endpoint_id is None:
-            return make_response(jsonify({
-                "error": "Query parameter 'api_endpoint_id' is required"
-            }), 400)
+        # Enforce JSON body for bulk deletions
+        data = request.get_json(silent=True)
         
-        row = DefApiEndpoint.query.filter_by(api_endpoint_id=api_endpoint_id).first()
-        if not row:
-            return make_response(jsonify({'error': 'API endpoint not found'}), 404)
+        if not data or 'api_endpoint_ids' not in data:
+            return make_response(jsonify({
+                "error": "JSON body with 'api_endpoint_ids' (list of IDs) is required"
+            }), 400)
 
-        db.session.delete(row)
+        ids = data['api_endpoint_ids']
+        
+        if not isinstance(ids, list):
+            # If a single ID was passed instead of a list, wrap it in a list
+            ids = [ids]
+
+        if not ids:
+            return make_response(jsonify({"error": "'api_endpoint_ids' list cannot be empty"}), 400)
+        
+        # 1. DELETE FROM def_api_endpoint_roles first to avoid ForeignKeyViolation
+        DefApiEndpointRole.query.filter(DefApiEndpointRole.api_endpoint_id.in_(ids)).delete(synchronize_session=False)
+
+        # 2. Get and delete the actual endpoints
+        rows = DefApiEndpoint.query.filter(DefApiEndpoint.api_endpoint_id.in_(ids)).all()
+        
+        if not rows:
+            # If we don't find any endpoints, we should still commit the role deletion just in case
+            db.session.commit()
+            return make_response(jsonify({'error': 'No matching API endpoints found for the provided ID(s)'}), 404)
+
+        deleted_count = 0
+        for row in rows:
+            db.session.delete(row)
+            deleted_count += 1
+            
         db.session.commit()
 
-        return make_response(jsonify({'message': 'Deleted successfully'}), 200)
+        return make_response(jsonify({
+            'message': 'Deleted successfully',
+            'deleted_count': deleted_count
+        }), 200)
 
     except Exception as e:
         db.session.rollback()
