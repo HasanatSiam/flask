@@ -34,16 +34,18 @@ database_url_test = os.environ.get("DATABASE_URL_TEST")  # Test DB for frontend 
 FLOWER_URL = os.environ.get("FLOWER_URL")
 crypto_secret_key = os.getenv("CRYPTO_SECRET_KEY")
 jwt_secret_key = os.getenv("JWT_SECRET_ACCESS_TOKEN")
+REACT_ENDPOINT_URL = os.getenv("REACT_ENDPOINT_URL")
 
-allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "[\"http://localhost:5173\"]")
-try:
-    allowed_origins = json.loads(allowed_origins_raw)
-    if not isinstance(allowed_origins, list):
-        allowed_origins = ["http://localhost:5173"]
-except json.JSONDecodeError:
-    allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
-    if not allowed_origins:
-        allowed_origins = ["http://localhost:5173"]
+# CORS Configuration
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS")
+allowed_origins = []
+if allowed_origins_raw:
+    try:
+        allowed_origins = json.loads(allowed_origins_raw)
+        if not isinstance(allowed_origins, list):
+            allowed_origins = [allowed_origins_raw]
+    except json.JSONDecodeError:
+        allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
  
 
 def parse_expiry(value):
