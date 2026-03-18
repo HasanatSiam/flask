@@ -110,17 +110,17 @@ def verify_request():
             request_id = int(decrypt(encrypted_request_id, crypto_secret_key))
             token      = decrypt(encrypted_token, crypto_secret_key)
         except Exception:
-            return jsonify({"message": "Invalid or corrupted link"}), 400
+            return jsonify({"is_valid": False, "message": "Invalid or corrupted link"}), 400
 
         # ------------------ Decode JWT ------------------
         try:
             decoded = decode_token(token)
         except Exception:
-            return jsonify({"message": "Invalid token"}), 403
+            return jsonify({"is_valid": False, "message": "Invalid token"}), 403
 
         user_id_from_token = decoded.get("user_id")
         if not user_id_from_token:
-            return jsonify({"message": "Invalid token payload"}), 403
+            return jsonify({"is_valid": False, "message": "Invalid token payload"}), 403
 
         # ------------------ Verify request in DB ------------------
         req_obj = ForgotPasswordRequest.query.filter(
@@ -130,9 +130,10 @@ def verify_request():
         ).first()
 
         if not req_obj:
-            return jsonify({"message": "The request is invalid"}), 200
+            return jsonify({"is_valid": False, "message": "The request is invalid"}), 200
 
         return jsonify({
+            "is_valid": True,
             "message": "The request is valid",
             "result": {
                 "forgot_password_request_id": req_obj.forgot_password_request_id,
@@ -142,7 +143,7 @@ def verify_request():
         }), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"is_valid": False, "error": str(e)}), 500
 
 
 @users_bp.route("/forgot-password/reset", methods=["POST"])
@@ -161,10 +162,10 @@ def reset_forgot_password():
         user_id_from_token = decoded.get("user_id")
 
         if not user_id_from_token:
-            return jsonify({"message": "Invalid token."}), 403
+            return jsonify({"is_success": False, "message": "Invalid token."}), 403
 
         if decoded["exp"] < datetime.utcnow().timestamp():
-            return jsonify({"message": "Reset link expired."}), 403
+            return jsonify({"is_success": False, "message": "Reset link expired."}), 403
 
         # ------------------ Find Password Reset Request ------------------
         req_obj = ForgotPasswordRequest.query.filter_by(
@@ -175,12 +176,12 @@ def reset_forgot_password():
         ).first()
 
         if not req_obj:
-            return jsonify({"isSuccess": False, "message": "Invalid or expired temporary password."}), 400
+            return jsonify({"is_success": False, "message": "Invalid or expired temporary password."}), 400
 
         # ------------------ Update User Password ------------------
         user = DefUserCredential.query.get(user_id_from_token)
         if not user:
-            return jsonify({"message": "User not found."}), 404
+            return jsonify({"is_success": False, "message": "User not found."}), 404
 
         user.password         = generate_password_hash(new_password, method='pbkdf2:sha256', salt_length=16)
         user.last_update_date = datetime.utcnow()
@@ -191,8 +192,8 @@ def reset_forgot_password():
 
         db.session.commit()
 
-        return jsonify({"message": "Password updated successfully."})
+        return jsonify({"is_success": True, "message": "Password updated successfully."})
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"is_success": False, "error": str(e)}), 500
