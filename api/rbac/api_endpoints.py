@@ -76,11 +76,27 @@ def get_api_endpoints():
                 return make_response(jsonify({
                     "error": f"API endpoint with id={api_endpoint_id} not found"
                 }), 404)
-            return make_response(jsonify(endpoint.json()), 200)
+            return make_response(jsonify({"result": endpoint.json()}), 200)
+
+        # Base query
+        query = DefApiEndpoint.query.order_by(DefApiEndpoint.api_endpoint_id.desc())
+
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [e.json() for e in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
 
         # Otherwise return all endpoints
-        endpoints = DefApiEndpoint.query.order_by(DefApiEndpoint.api_endpoint_id.desc()).all()
-        return make_response(jsonify([e.json() for e in endpoints]), 200)
+        endpoints = query.all()
+        return make_response(jsonify({"result": [e.json() for e in endpoints]}), 200)
 
     except Exception as e:
         return make_response(jsonify({
