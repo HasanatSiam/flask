@@ -102,20 +102,7 @@ def role_required():
                 endpoint = query.first()
 
                 if not endpoint:
-                    # Print out debug info so we can see why it didn't match in the console
-                    print(f"RBAC DEBUG: Failed to match endpoint!")
-                    print(f"RBAC DEBUG: rule='{rule}', method='{method}'")
-                    print(f"RBAC DEBUG: Searched for api_endpoint='{api_endpoint}', p1='{parameter1}', p2='{parameter2}'")
-                    print(f"RBAC DEBUG: User's allowed_api_endpoint_ids = {allowed_api_endpoint_ids}")
-                    
-                    # Print what actual endpoints are in the allowed list for debugging
-                    allowed_endpoints = DefApiEndpoint.query.filter(DefApiEndpoint.api_endpoint_id.in_(allowed_api_endpoint_ids)).all()
-                    for allowed in allowed_endpoints:
-                        print(f"RBAC DEBUG: Allowed DB Entry -> api='{allowed.api_endpoint}', method='{allowed.method}', p1='{allowed.parameter1}', p2='{allowed.parameter2}'")
-                        
-                    return jsonify({
-                        "message": f"Access denied."
-                    }), 403
+                    return jsonify({"message": "Access denied."}), 403
 
                 #  Check privilege (in memory — no DB query, privilege_ids from Redis cache)
                 if endpoint.privilege_id and endpoint.privilege_id not in privilege_ids:
