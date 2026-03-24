@@ -6,7 +6,6 @@ import hashlib
 from Crypto.Cipher import AES
 import base64
 
-
 from executors.models import (
     DefUserGrantedRole,
     DefApiEndpointRole,
@@ -14,8 +13,6 @@ from executors.models import (
     DefUserGrantedPrivilege,
 )
 from executors.extensions import cache
-
-
 
 
 def role_required():
@@ -46,7 +43,6 @@ def role_required():
                     if p1.startswith("<") and p1.endswith(">"):
                         parameter1 = p1[1:-1].split(":")[-1]   # remove int: or string: type
 
-
                 if len(parts) > 2:
                     p2 = parts[2]
                     if p2.startswith("<") and p2.endswith(">"):
@@ -54,28 +50,13 @@ def role_required():
 
 
 
-                # ── Cache Lookup (Redis)
-                cache_key = f"rbac:user:{current_user_id}"
-                user_rbac = cache.get(cache_key)
-
-                if user_rbac is None:
-                    # Cache MISS — query DB for roles and privileges
-                    user_roles = DefUserGrantedRole.query.filter_by(user_id=current_user_id).all()
-                    user_privileges = DefUserGrantedPrivilege.query.filter_by(user_id=current_user_id).all()
-
-                    user_rbac = {
-                        "role_ids": [ur.role_id for ur in user_roles],
-                        "privilege_ids": [up.privilege_id for up in user_privileges],
-                    }
-                    cache.set(cache_key, user_rbac)  # TTL from CACHE_DEFAULT_TIMEOUT (60s)
-
-                role_ids = user_rbac["role_ids"]
-                privilege_ids = user_rbac["privilege_ids"]
+                #  Fetch allowed roles for this user
+                user_roles = DefUserGrantedRole.query.filter_by(user_id=current_user_id).all()
+                role_ids = [ur.role_id for ur in user_roles]
 
                 if not role_ids:
                     return jsonify({"message": "No roles assigned"}), 403
 
-                # Get allowed endpoint IDs for this user's roles
                 allowed_mappings = DefApiEndpointRole.query.filter(
                     DefApiEndpointRole.role_id.in_(role_ids)
                 ).all()
@@ -85,40 +66,56 @@ def role_required():
                 if not allowed_api_endpoint_ids:
                     return jsonify({"message": "User has no API access roles"}), 403
 
+                # ── Cache Lookup (Redis)
+                cache_key = f"rbac:user:{current_user_id}"
+                user_rbac = cache.get(cache_key)
+
+                if user_rbac is None:
+                    # Cache MISS — query DB for roles and privileges
+                    user_roles_fresh = DefUserGrantedRole.query.filter_by(user_id=current_user_id).all()
+                    user_privileges_fresh = DefUserGrantedPrivilege.query.filter_by(user_id=current_user_id).all()
+                    user_rbac = {
+                        "role_ids": [ur.role_id for ur in user_roles_fresh],
+                        "privilege_ids": [up.privilege_id for up in user_privileges_fresh],
+                    }
+                    cache.set(cache_key, user_rbac)
+
+                privilege_ids = user_rbac["privilege_ids"]
+
                 # Handle empty strings from DB matching against None
                 query = DefApiEndpoint.query.filter(
                     DefApiEndpoint.api_endpoint_id.in_(allowed_api_endpoint_ids),
                     DefApiEndpoint.api_endpoint == api_endpoint,
                     DefApiEndpoint.method == method
                 )
-
+                
                 if parameter1:
                     query = query.filter(DefApiEndpoint.parameter1 == parameter1)
                 else:
-                    query = query.filter(
-                        (DefApiEndpoint.parameter1 == None) | (DefApiEndpoint.parameter1 == "")
-                    )
-
+                    query = query.filter((DefApiEndpoint.parameter1 == None) | (DefApiEndpoint.parameter1 == ""))
+                    
                 if parameter2:
                     query = query.filter(DefApiEndpoint.parameter2 == parameter2)
                 else:
-                    query = query.filter(
-                        (DefApiEndpoint.parameter2 == None) | (DefApiEndpoint.parameter2 == "")
-                    )
+                    query = query.filter((DefApiEndpoint.parameter2 == None) | (DefApiEndpoint.parameter2 == ""))
 
                 endpoint = query.first()
 
                 if not endpoint:
+                    # Print out debug info so we can see why it didn't match in the console
                     print(f"RBAC DEBUG: Failed to match endpoint!")
                     print(f"RBAC DEBUG: rule='{rule}', method='{method}'")
                     print(f"RBAC DEBUG: Searched for api_endpoint='{api_endpoint}', p1='{parameter1}', p2='{parameter2}'")
                     print(f"RBAC DEBUG: User's allowed_api_endpoint_ids = {allowed_api_endpoint_ids}")
-                    allowed_endpoints = DefApiEndpoint.query.filter(
-                        DefApiEndpoint.api_endpoint_id.in_(allowed_api_endpoint_ids)
-                    ).all()
-                    for ep in allowed_endpoints:
-                        print(f"RBAC DEBUG: Allowed DB Entry -> api='{ep.api_endpoint}', method='{ep.method}', p1='{ep.parameter1}', p2='{ep.parameter2}'")
-                    return jsonify({"message": "Access denied."}), 403
+                    
+                    # Print what actual endpoints are in the allowed list for debugging
+                    allowed_endpoints = DefApiEndpoint.query.filter(DefApiEndpoint.api_endpoint_id.in_(allowed_api_endpoint_ids)).all()
+                    for allowed in allowed_endpoints:
+                        print(f"RBAC DEBUG: Allowed DB Entry -> api='{allowed.api_endpoint}', method='{allowed.method}', p1='{allowed.parameter1}', p2='{allowed.parameter2}'")
+                        
+                    return jsonify({
+                        "message": f"Access denied."
+                    }), 403
 
                 #  Check privilege (in memory — no DB query, privilege_ids from Redis cache)
                 if endpoint.privilege_id and endpoint.privilege_id not in privilege_ids:
