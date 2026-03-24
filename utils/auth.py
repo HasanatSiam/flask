@@ -7,6 +7,16 @@ from Crypto.Cipher import AES
 import base64
 
 
+from executors.models import (
+    DefUserGrantedRole,
+    DefApiEndpointRole,
+    DefApiEndpoint,
+    DefUserGrantedPrivilege,
+)
+from executors.extensions import cache
+
+
+
 
 def role_required():
 
@@ -14,13 +24,6 @@ def role_required():
         @wraps(fn)
         def wrapper(*args, **kwargs):
             try:
-                from executors.models import (
-                    DefUserGrantedRole,
-                    DefApiEndpointRole,
-                    DefApiEndpoint,
-                    DefUserGrantedPrivilege
-
-                )
                 
                 current_user_id = get_jwt_identity()
                 if not current_user_id:
@@ -51,13 +54,28 @@ def role_required():
 
 
 
-                #  Fetch allowed roles for this user
-                user_roles = DefUserGrantedRole.query.filter_by(user_id=current_user_id).all()
-                role_ids = [ur.role_id for ur in user_roles]
+                # ── Cache Lookup (Redis)
+                cache_key = f"rbac:user:{current_user_id}"
+                user_rbac = cache.get(cache_key)
+
+                if user_rbac is None:
+                    # Cache MISS — query DB for roles and privileges
+                    user_roles = DefUserGrantedRole.query.filter_by(user_id=current_user_id).all()
+                    user_privileges = DefUserGrantedPrivilege.query.filter_by(user_id=current_user_id).all()
+
+                    user_rbac = {
+                        "role_ids": [ur.role_id for ur in user_roles],
+                        "privilege_ids": [up.privilege_id for up in user_privileges],
+                    }
+                    cache.set(cache_key, user_rbac)  # TTL from CACHE_DEFAULT_TIMEOUT (60s)
+
+                role_ids = user_rbac["role_ids"]
+                privilege_ids = user_rbac["privilege_ids"]
 
                 if not role_ids:
                     return jsonify({"message": "No roles assigned"}), 403
 
+                # Get allowed endpoint IDs for this user's roles
                 allowed_mappings = DefApiEndpointRole.query.filter(
                     DefApiEndpointRole.role_id.in_(role_ids)
                 ).all()
@@ -66,7 +84,6 @@ def role_required():
 
                 if not allowed_api_endpoint_ids:
                     return jsonify({"message": "User has no API access roles"}), 403
-
 
                 #  Match the stored API endpoint rule in DB
                 endpoint = DefApiEndpoint.query.filter(
@@ -78,17 +95,9 @@ def role_required():
                 ).first()
 
                 if not endpoint:
-                    return jsonify({
-                        "message": f"Access denied."
-                    }), 403
+                    return jsonify({"message": "Access denied."}), 403
 
-                #  Check privilege
-                user_privileges = DefUserGrantedPrivilege.query.filter_by(
-                    user_id=current_user_id
-                ).all()
-
-                privilege_ids = [up.privilege_id for up in user_privileges]
-
+                #  Check privilege (in memory — no DB query)
                 if endpoint.privilege_id not in privilege_ids:
                     return jsonify({"message": "Privilege denied"}), 403
 
