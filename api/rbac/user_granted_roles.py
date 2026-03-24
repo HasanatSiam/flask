@@ -79,7 +79,7 @@ def create_user_granted_roles():
 
         # Return response with success message
         return make_response(jsonify({
-            "message": "Roles assigned successfully",
+            "message": "Added successfully",
             "assigned_roles": [m.json() for m in new_mappings]
         }), 201)
 
@@ -111,7 +111,7 @@ def get_user_granted_roles():
                 return make_response(jsonify({
                     "error": f"No mapping found for user_id={user_id} and role_id={role_id}"
                 }), 404)
-            return make_response(jsonify(record.json()), 200)
+            return make_response(jsonify({"result": record.json()}), 200)
 
         query = DefUserGrantedRole.query
 
@@ -128,7 +128,7 @@ def get_user_granted_roles():
             query = query.join(DefUser).filter(DefUser.tenant_id == tenant_id)
 
         results = query.all()
-        return make_response(jsonify([m.json() for m in results]), 200)
+        return make_response(jsonify({"result": [m.json() for m in results]}), 200)
 
     except Exception as e:
         return make_response(jsonify({
@@ -269,5 +269,6 @@ def delete_user_granted_role():
             "error": str(e),
             "message": "Error deleting user granted role"
         }), 500)
+
 
 

@@ -39,14 +39,19 @@ def create_role():
             role_name=role_name,
             created_by     = get_jwt_identity(),
             creation_date  = datetime.utcnow(),
+            last_updated_by = get_jwt_identity(),
+            last_update_date = datetime.utcnow()
         )
 
         db.session.add(new_role)
         db.session.commit()
 
-        return make_response(jsonify({'message': 'Added successfully'}), 201)
+        return make_response(jsonify({
+            'message': 'Added successfully'
+        }), 201)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
             'message': 'Error creating role'
@@ -67,11 +72,11 @@ def get_roles():
                 return make_response(jsonify({
                     "error": f"Role with id={role_id} not found"
                 }), 404)
-            return make_response(jsonify(role.json()), 200)
+            return make_response(jsonify({"result": role.json()}), 200)
 
         # Otherwise return all roles
         roles = DefRoles.query.order_by(DefRoles.role_id.desc()).all()
-        return make_response(jsonify([r.json() for r in roles]), 200)
+        return make_response(jsonify({"result": [r.json() for r in roles]}), 200)
 
     except Exception as e:
         return make_response(jsonify({
@@ -105,9 +110,12 @@ def update_role():
 
         db.session.commit()
 
-        return make_response(jsonify({'message': 'Edited successfully'}), 200)
+        return make_response(jsonify({
+            'message': 'Edited successfully'
+        }), 200)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
             'message': 'Error updating role'
@@ -135,8 +143,10 @@ def delete_role():
         return make_response(jsonify({'message': 'Deleted successfully'}), 200)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
             'message': 'Error deleting role'
         }), 500)
+
 
