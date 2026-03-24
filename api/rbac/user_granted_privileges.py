@@ -4,6 +4,7 @@ from flask import request, jsonify, make_response       # Flask utilities for ha
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from executors.extensions import db
+from executors.extensions import cache
 
 from executors.models import (
     DefUser,
@@ -75,6 +76,9 @@ def create_user_granted_privileges():
             new_mappings.append(new_mapping)
 
         db.session.commit()
+
+        # Invalidate RBAC cache so next request fetches fresh privileges
+        cache.delete(f"rbac:user:{user_id}")
 
         # Return response with success message
         return make_response(jsonify({
@@ -205,6 +209,9 @@ def update_user_granted_privileges():
 
         db.session.commit()
 
+        # Invalidate RBAC cache so next request fetches fresh privileges
+        cache.delete(f"rbac:user:{user_id}")
+
         return make_response(jsonify({
             "message": "Edited successfully",
             "privilege_ids": sorted(list(incoming_priv_ids))
@@ -243,6 +250,9 @@ def delete_user_granted_privilege():
 
         db.session.delete(record)
         db.session.commit()
+
+        # Invalidate RBAC cache so next request fetches fresh privileges
+        cache.delete(f"rbac:user:{user_id}")
 
         return make_response(jsonify({"message": "Deleted successfully"}), 200)
 

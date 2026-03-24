@@ -6,6 +6,13 @@ import hashlib
 from Crypto.Cipher import AES
 import base64
 
+from executors.models import (
+    DefUserGrantedRole,
+    DefApiEndpointRole,
+    DefApiEndpoint,
+    DefUserGrantedPrivilege,
+)
+from executors.extensions import cache
 
 
 def role_required():
@@ -14,13 +21,6 @@ def role_required():
         @wraps(fn)
         def wrapper(*args, **kwargs):
             try:
-                from executors.models import (
-                    DefUserGrantedRole,
-                    DefApiEndpointRole,
-                    DefApiEndpoint,
-                    DefUserGrantedPrivilege
-
-                )
                 
                 current_user_id = get_jwt_identity()
                 if not current_user_id:
@@ -66,6 +66,21 @@ def role_required():
                 if not allowed_api_endpoint_ids:
                     return jsonify({"message": "User has no API access roles"}), 403
 
+                # ── Cache Lookup (Redis)
+                cache_key = f"rbac:user:{current_user_id}"
+                user_rbac = cache.get(cache_key)
+
+                if user_rbac is None:
+                    # Cache MISS — query DB for roles and privileges
+                    user_roles_fresh = DefUserGrantedRole.query.filter_by(user_id=current_user_id).all()
+                    user_privileges_fresh = DefUserGrantedPrivilege.query.filter_by(user_id=current_user_id).all()
+                    user_rbac = {
+                        "role_ids": [ur.role_id for ur in user_roles_fresh],
+                        "privilege_ids": [up.privilege_id for up in user_privileges_fresh],
+                    }
+                    cache.set(cache_key, user_rbac)
+
+                privilege_ids = user_rbac["privilege_ids"]
 
                 # Handle empty strings from DB matching against None
                 query = DefApiEndpoint.query.filter(
@@ -102,13 +117,7 @@ def role_required():
                         "message": f"Access denied."
                     }), 403
 
-                #  Check privilege
-                user_privileges = DefUserGrantedPrivilege.query.filter_by(
-                    user_id=current_user_id
-                ).all()
-
-                privilege_ids = [up.privilege_id for up in user_privileges]
-
+                #  Check privilege (in memory — no DB query, privilege_ids from Redis cache)
                 if endpoint.privilege_id and endpoint.privilege_id not in privilege_ids:
                     return jsonify({"message": "Privilege denied"}), 403
 
