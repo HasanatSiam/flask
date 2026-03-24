@@ -68,7 +68,9 @@ def create_api_endpoint_role():
         db.session.add(new_mapping)
         db.session.commit()
 
-        return make_response(jsonify(new_mapping.json()), 201)
+        return make_response(jsonify({
+            "message": "Added successfully"
+        }), 201)
 
     except Exception as e:
         db.session.rollback()

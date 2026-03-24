@@ -78,7 +78,7 @@ def create_user_granted_privileges():
 
         # Return response with success message
         return make_response(jsonify({
-            "message": "Privileges assigned successfully",
+            "message": "Added successfully",
             "assigned_privileges": [m.json() for m in new_mappings]
         }), 201)
 
@@ -111,7 +111,7 @@ def get_user_granted_privileges():
                 return make_response(jsonify({
                     "error": f"No mapping found for user_id={user_id} and privilege_id={privilege_id}"
                 }), 404)
-            return make_response(jsonify(record.json()), 200)
+            return make_response(jsonify({"result": record.json()}), 200)
 
         # Otherwise build a list query
         query = DefUserGrantedPrivilege.query
@@ -124,7 +124,7 @@ def get_user_granted_privileges():
             query = query.join(DefUser).filter(DefUser.tenant_id == tenant_id)
 
         records = query.order_by(DefUserGrantedPrivilege.creation_date.desc()).all()
-        return make_response(jsonify([r.json() for r in records]), 200)
+        return make_response(jsonify({"result": [r.json() for r in records]}), 200)
 
     except Exception as e:
         return make_response(jsonify({"error": str(e), "message": "Error fetching user-privilege mappings"}), 500)
@@ -247,7 +247,9 @@ def delete_user_granted_privilege():
         return make_response(jsonify({"message": "Deleted successfully"}), 200)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({"error": str(e)}), 500)
+
 
 
 

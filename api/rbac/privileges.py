@@ -27,11 +27,11 @@ def get_def_privileges():
                 return make_response(jsonify({
                     "error": f"Privilege with id={privilege_id} not found"
                 }), 404)
-            return make_response(jsonify(record.json()), 200)
+            return make_response(jsonify({"result": record.json()}), 200)
 
         # Otherwise return all records
         records = DefPrivilege.query.order_by(DefPrivilege.privilege_id.desc()).all()
-        return make_response(jsonify([r.json() for r in records]), 200)
+        return make_response(jsonify({"result": [r.json() for r in records]}), 200)
 
     except Exception as e:
         return make_response(jsonify({
@@ -54,7 +54,7 @@ def create_def_privilege():
             return make_response(jsonify({'error': 'privilege_id is required'}), 400)
 
         if not privilege_name:
-            return make_response({"error": "privilege_name is required"}, 400)
+            return make_response(jsonify({"error": "privilege_name is required"}), 400)
         
         existing = DefPrivilege.query.filter_by(privilege_id=privilege_id).first()
         if existing:
@@ -65,16 +65,20 @@ def create_def_privilege():
             privilege_name=privilege_name,
             created_by=get_jwt_identity(),
             creation_date=datetime.utcnow(),
+            last_updated_by=get_jwt_identity(),
+            last_update_date=datetime.utcnow()
         )
 
         db.session.add(new_record)
         db.session.commit()
 
-        return make_response(new_record.json(), 201)
+        return make_response(jsonify({
+            "message": "Added successfully"
+        }), 201)
 
     except Exception as e:
         db.session.rollback()
-        return make_response({"error": str(e)}, 500)
+        return make_response(jsonify({"error": str(e)}), 500)
 
 
 
@@ -89,7 +93,6 @@ def update_privilege():
             }), 400)
         
         privilege_name = request.json.get('privilege_name')
-        # updated_by = get_jwt_identity()
 
         privilege = DefPrivilege.query.filter_by(privilege_id=privilege_id).first()
         if not privilege:
@@ -103,9 +106,12 @@ def update_privilege():
 
         db.session.commit()
 
-        return make_response(jsonify({'message': 'Edited successfully'}), 200)
+        return make_response(jsonify({
+            'message': 'Edited successfully'
+        }), 200)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
             'message': 'Error updating privilege'
@@ -133,8 +139,10 @@ def delete_privilege():
         return make_response(jsonify({'message': 'Deleted successfully'}), 200)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
             'message': 'Error deleting privilege'
         }), 500)
+
 
