@@ -1,6 +1,6 @@
+from flask import request, jsonify, make_response
+from sqlalchemy import or_
 from datetime import datetime
-from flask import request, jsonify, make_response     
-
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from executors.extensions import db
 from utils.auth import role_required
@@ -59,7 +59,9 @@ def create_api_endpoint_role():
             api_endpoint_id=api_endpoint_id,
             role_id=role_id,
             created_by     = get_jwt_identity(),
-            creation_date  = datetime.utcnow()
+            creation_date  = datetime.utcnow(),
+            last_updated_by = get_jwt_identity(),
+            last_update_date = datetime.utcnow()
 
         )
 
@@ -93,18 +95,52 @@ def get_api_endpoint_roles():
                 return make_response(jsonify({
                     "error": f"No data found for api_endpoint_id={api_endpoint_id} and role_id={role_id}"
                 }), 404)
-            return make_response(jsonify(record.json()), 200)
+            return make_response(jsonify({"result": record.json()}), 200)
 
-        # Otherwise build a list query (may be empty)
-        query = DefApiEndpointRole.query
+        # Build list query
+        query = db.session.query(DefApiEndpointRole).join(DefApiEndpoint).join(DefRoles)
 
+        # Single ID filters
         if api_endpoint_id is not None:
-            query = query.filter_by(api_endpoint_id=api_endpoint_id)
+            query = query.filter(DefApiEndpointRole.api_endpoint_id == api_endpoint_id)
         if role_id is not None:
-            query = query.filter_by(role_id=role_id)
+            query = query.filter(DefApiEndpointRole.role_id == role_id)
 
-        records = query.order_by(DefApiEndpointRole.creation_date.desc()).all()
-        return make_response(jsonify([r.json() for r in records]), 200)
+        # Search filter (similar to api_endpoints searching for endpoint name or role name)
+        search_term = request.args.get('search_term', '').strip()
+        if search_term:
+            search_underscore = search_term.replace(' ', '_')
+            search_space = search_term.replace('_', ' ')
+            query = query.filter(
+                or_(
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_term}%'),
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_underscore}%'),
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_space}%'),
+                    DefRoles.role_name.ilike(f'%{search_term}%'),
+                    DefRoles.role_name.ilike(f'%{search_underscore}%'),
+                    DefRoles.role_name.ilike(f'%{search_space}%')
+                )
+            )
+
+        # Ordering
+        query = query.order_by(DefApiEndpointRole.creation_date.desc())
+
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [r.json() for r in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        # Otherwise return all matching records
+        records = query.all()
+        return make_response(jsonify({"result": [r.json() for r in records]}), 200)
 
     except Exception as e:
         return make_response(jsonify({
@@ -166,31 +202,50 @@ def update_api_endpoint_role():
 @jwt_required()
 def delete_api_endpoint_role():
     try:
-        api_endpoint_id = request.args.get("api_endpoint_id", type=int)
-        role_id = request.args.get("role_id", type=int)
-
-        # Validate required params
-        if api_endpoint_id is None or role_id is None:
+        # Enforce JSON body for bulk deletions
+        data = request.get_json(silent=True)
+        
+        if not data or 'api_endpoint_role_data' not in data:
             return make_response(jsonify({
-                "error": "Query parameters 'api_endpoint_id' and 'role_id' are required"
+                "error": "JSON body with 'api_endpoint_role_data' (list of {api_endpoint_id, role_id}) is required"
             }), 400)
 
-        # Find the record
-        record = DefApiEndpointRole.query.filter_by(
-            api_endpoint_id=api_endpoint_id,
-            role_id=role_id
-        ).first()
+        mapping_data = data['api_endpoint_role_data']
+        
+        if not isinstance(mapping_data, list):
+            # If a single object was passed, wrap it in a list
+            mapping_data = [mapping_data]
 
-        if not record:
-            return make_response(jsonify({
-                "error": f"No mapping found for api_endpoint_id={api_endpoint_id} and role_id={role_id}"
-            }), 404)
+        if not mapping_data:
+            return make_response(jsonify({"error": "'api_endpoint_role_data' list cannot be empty"}), 400)
+        
+        deleted_count = 0
+        for entry in mapping_data:
+            eid = entry.get('api_endpoint_id')
+            rid = entry.get('role_id')
+            
+            if eid is None or rid is None:
+                continue
 
-        db.session.delete(record)
+            # Find the record
+            record = DefApiEndpointRole.query.filter_by(
+                api_endpoint_id=eid,
+                role_id=rid
+            ).first()
+
+            if record:
+                db.session.delete(record)
+                deleted_count += 1
+
+        if deleted_count == 0:
+            return make_response(jsonify({'error': 'No matching API endpoint-role mappings found for the provided data'}), 404)
+            
         db.session.commit()
 
         return make_response(jsonify({
-            "message": "Deleted successfully"}), 200)
+            "message": "Deleted successfully",
+            "deleted_count": deleted_count
+        }), 200)
 
     except Exception as e:
         db.session.rollback()
