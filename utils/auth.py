@@ -40,13 +40,13 @@ def role_required():
 
                 if len(parts) > 1:
                     p1 = parts[1]
-                    if p1.startswith("<") and p1.endswith(">"):
-                        parameter1 = p1[1:-1].split(":")[-1]   # remove int: or string: type
+                    # Capture dynamic variable name OR static string segment
+                    parameter1 = p1[1:-1].split(":")[-1] if p1.startswith("<") and p1.endswith(">") else p1
 
                 if len(parts) > 2:
                     p2 = parts[2]
-                    if p2.startswith("<") and p2.endswith(">"):
-                        parameter2 = p2[1:-1].split(":")[-1]
+                    # Capture dynamic variable name OR static string segment
+                    parameter2 = p2[1:-1].split(":")[-1] if p2.startswith("<") and p2.endswith(">") else p2
 
 
 
