@@ -76,6 +76,8 @@ def get_tenants():
 
 
 @tenant_enterprise_bp.route('/tenants/v1', methods=['GET'])
+@jwt_required()
+@role_required()
 def get_tenants_v1():
     try:
         tenants = DefTenant.query.order_by(DefTenant.tenant_id.desc()).all()
@@ -87,6 +89,7 @@ def get_tenants_v1():
 
 @tenant_enterprise_bp.route('/def_tenants/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_paginated_tenants(page, limit):
     try:
         query = DefTenant.query.order_by(DefTenant.tenant_id.desc())
@@ -103,6 +106,7 @@ def get_paginated_tenants(page, limit):
 
 @tenant_enterprise_bp.route('/def_tenants/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def search_tenants(page, limit):
     try:
         search_query = request.args.get('tenant_name', '').strip()
@@ -149,6 +153,7 @@ def get_tenant(tenant_id):
 # Update a tenant
 @tenant_enterprise_bp.route('/def_tenants', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_tenant():
     try:
         tenant_id = request.args.get('tenant_id', type=int)
@@ -172,6 +177,7 @@ def update_tenant():
 # Delete a tenant
 @tenant_enterprise_bp.route('/def_tenants', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_tenant():
     try:
         tenant_id = request.args.get('tenant_id', type=int)
@@ -189,6 +195,7 @@ def delete_tenant():
     
 @tenant_enterprise_bp.route('/tenants/cascade_delete', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_tenant_and_related():
     try:
         tenant_id = request.args.get('tenant_id', type=int)

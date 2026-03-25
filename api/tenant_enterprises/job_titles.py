@@ -11,9 +11,11 @@ from executors.models import (
 
 
 from . import tenant_enterprise_bp
+from utils.auth import role_required
 
 @tenant_enterprise_bp.route('/job_titles', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_job_title():
     try:
         data = request.get_json()
@@ -49,6 +51,7 @@ def create_job_title():
 
 @tenant_enterprise_bp.route('/job_titles', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_job_titles():
     try:
         job_title_id = request.args.get('job_title_id', type=int)
@@ -100,6 +103,7 @@ def get_job_titles():
 
 @tenant_enterprise_bp.route('/job_titles', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_job_title():
     try:
         job_title_id = request.args.get('job_title_id', type=int)
@@ -151,6 +155,7 @@ def update_job_title():
 
 @tenant_enterprise_bp.route('/job_titles', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_job_title():
     try:
         job_title_id = request.args.get('job_title_id', type=int)

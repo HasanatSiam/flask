@@ -13,10 +13,12 @@ from executors.models import (
 )
 
 from . import tenant_enterprise_bp
+from utils.auth import role_required
 
 # Create enterprise setup
 @tenant_enterprise_bp.route('/create_enterpriseV1/<int:tenant_id>', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_enterprise(tenant_id):
     try:
         data = request.get_json()
@@ -46,6 +48,7 @@ def create_enterprise(tenant_id):
 # Create or update enterprise setup
 @tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_update_enterprise():
     try:
         tenant_id = request.args.get('tenant_id', type=int)
@@ -108,6 +111,7 @@ def create_update_enterprise():
 #Get all enterprise setups
 @tenant_enterprise_bp.route('/get_enterprises', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_enterprises():
     try:
         setups = DefTenantEnterpriseSetup.query.order_by(DefTenantEnterpriseSetup.tenant_id.desc()).all()
@@ -116,6 +120,8 @@ def get_enterprises():
         return make_response(jsonify({"message": "Error retrieving enterprise setups", "error": str(e)}), 500)
 
 @tenant_enterprise_bp.route('/get_enterprises/v1', methods=['GET'])
+@jwt_required()
+@role_required()
 def get_enterprises_v1():
     try:
         setups = DefTenantEnterpriseSetup.query.order_by(DefTenantEnterpriseSetup.tenant_id.desc()).all()
@@ -130,6 +136,7 @@ def get_enterprises_v1():
 # Update enterprise setup
 @tenant_enterprise_bp.route('/update_enterprise/<int:tenant_id>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_enterprise(tenant_id):
     try:
         setup = DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).first()
@@ -150,6 +157,7 @@ def update_enterprise(tenant_id):
 # Delete enterprise setup
 @tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_enterprise():
     try:
         tenant_id = request.args.get('tenant_id', type=int)
@@ -173,6 +181,7 @@ def delete_enterprise():
 
 @tenant_enterprise_bp.route('/def_tenant_enterprise_setup', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_tenant_enterprise_setup():
     try:
         # Base query using the View model
