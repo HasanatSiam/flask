@@ -17,6 +17,7 @@ from . import controls_bp
 
 @controls_bp.route('/def_control_environments', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_control_environments():
     try:
         # Query params
@@ -86,6 +87,7 @@ def get_control_environments():
 
 @controls_bp.route('/def_control_environments', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_control_environment():
     try:
         data = request.get_json()
@@ -122,6 +124,7 @@ def create_control_environment():
 
 @controls_bp.route('/def_control_environments', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_control_environment():
     try:
         control_environment_id = request.args.get('control_environment_id', type=int)
@@ -161,6 +164,7 @@ def update_control_environment():
 
 @controls_bp.route('/def_control_environments', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_control_environments():
     try:
         data = request.get_json()

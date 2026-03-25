@@ -19,6 +19,7 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_user_granted_privileges', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_user_granted_privileges():
     try:
         data = request.json
@@ -98,6 +99,7 @@ def create_user_granted_privileges():
 
 @rbac_bp.route('/def_user_granted_privileges', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_user_granted_privileges():
     try:
         user_id = request.args.get("user_id", type=int)
@@ -138,6 +140,7 @@ def get_user_granted_privileges():
 
 @rbac_bp.route('/def_user_granted_privileges', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_user_granted_privileges():
     try:
         # user_id comes from query param
@@ -229,6 +232,7 @@ def update_user_granted_privileges():
 
 @rbac_bp.route('/def_user_granted_privileges', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_user_granted_privilege():
     try:
         user_id = request.args.get("user_id", type=int)

@@ -1,5 +1,6 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from datetime import datetime
 
 from executors.extensions import db
@@ -8,6 +9,7 @@ from . import data_sources_bp
 
 @data_sources_bp.route('/def_application_types', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_application_type():
     try:
         data = request.get_json()
@@ -45,6 +47,7 @@ def create_application_type():
 
 @data_sources_bp.route('/def_application_types', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_application_types():
     try:
         app_type_id = request.args.get('def_application_type_id', type=int)
@@ -88,6 +91,7 @@ def get_application_types():
 
 @data_sources_bp.route('/def_application_types', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_application_type():
     try:
         app_type_id = request.args.get('def_application_type_id', type=int)
@@ -118,6 +122,7 @@ def update_application_type():
 
 @data_sources_bp.route('/def_application_types', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_application_type():
     try:
         data = request.get_json(silent=True)

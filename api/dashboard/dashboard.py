@@ -2,6 +2,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from flask import jsonify, current_app
 from flask_jwt_extended import jwt_required
+from utils.auth import role_required
 from executors.extensions import db, cache
 from executors.models import (
     DefProcess,
@@ -94,6 +95,7 @@ def _fetch_all_items(app):
 
 @dashboard_bp.route('/dashboard/summary', methods=['GET'])
 @jwt_required()
+@role_required()
 @cache.cached(timeout=60, key_prefix='dashboard_summary')
 def get_dashboard_summary():
     try:

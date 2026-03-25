@@ -15,6 +15,7 @@ from . import users_bp
 
 @users_bp.route('/defusers', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_user():
     try:
         # Parse data from the request body
@@ -70,6 +71,7 @@ def create_def_user():
 
 @users_bp.route('/defusers', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_users():
     try:
         users = DefUser.query.all()
@@ -80,6 +82,7 @@ def get_users():
 
 @users_bp.route('/defusers/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_paginated_def_users(page, limit):
     try:
         query = DefUser.query.order_by(DefUser.user_id.desc())
@@ -98,6 +101,7 @@ def get_paginated_def_users(page, limit):
 
 @users_bp.route('/defusers/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def search_def_users(page, limit):
     try:
         search_query = request.args.get('user_name', '').strip().lower()
@@ -129,6 +133,7 @@ def search_def_users(page, limit):
 # get a user by id
 @users_bp.route('/defusers/<int:user_id>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_user(user_id):
     try:
         user = DefUser.query.filter_by(user_id=user_id).first()
@@ -141,6 +146,7 @@ def get_user(user_id):
     
 @users_bp.route('/defusers/<int:user_id>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_user(user_id):
     try:
         user = DefUser.query.filter_by(user_id=user_id).first()
@@ -165,6 +171,7 @@ def update_user(user_id):
 
 @users_bp.route('/defusers/<int:user_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_user(user_id):
     try:
         user = DefUser.query.filter_by(user_id=user_id).first()

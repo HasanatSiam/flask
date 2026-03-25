@@ -145,6 +145,7 @@ def delete_def_global_condition():
 
 @global_conditions_bp.route('/def_global_conditions/cascade', methods=['DELETE'])
 @jwt_required()
+@role_required()
 # @role_required()
 def cascade_delete_global_condition():
     try:

@@ -1,6 +1,7 @@
 from datetime import datetime
 from flask import request, jsonify, make_response 
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from sqlalchemy import or_, create_engine, text
 from executors.extensions import db
 from executors.models import (
@@ -15,6 +16,7 @@ from . import data_sources_bp
 #Def_Data_Sources
 @data_sources_bp.route('/def_data_sources', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_data_source():
     try:
         new_datasource = DefDataSource(
@@ -41,6 +43,7 @@ def create_def_data_source():
 
 @data_sources_bp.route('/def_data_sources', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_data_sources():
     try:
         def_data_source_id = request.args.get('def_data_source_id', type=int)
@@ -89,6 +92,7 @@ def get_def_data_sources():
 
 @data_sources_bp.route('/def_data_sources', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_def_data_source():
     try:
         def_data_source_id = request.args.get('def_data_source_id', type=int)
@@ -117,6 +121,7 @@ def update_def_data_source():
 
 @data_sources_bp.route('/def_data_sources', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_def_data_source():
     try:
         def_data_source_id = request.args.get('def_data_source_id', type=int)
@@ -134,6 +139,7 @@ def delete_def_data_source():
 
 @data_sources_bp.route('/def_data_sources/cascade', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def cascade_delete_def_data_source():
     """
     Delete a datasource and all its related records across the system.

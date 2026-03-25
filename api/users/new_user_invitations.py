@@ -13,12 +13,17 @@ from executors.extensions import db
 from executors.models import(DefUser,
                              DefPerson,
                              DefUserCredential,
-                             NewUserInvitation)
+                             NewUserInvitation,
+                             DefPrivilege,
+                             DefUserGrantedPrivilege,
+                             DefRoles,
+                             DefUserGrantedRole)
 
 from . import users_bp
 
 @users_bp.route("/invitations/via_email", methods=["POST"])
 @jwt_required()
+@role_required()
 def invitation_via_email():
     """Send invitation via email with encrypted links"""
     try:
@@ -115,6 +120,7 @@ def invitation_via_email():
 
 @users_bp.route("/invitations/via_link", methods=["POST"])
 @jwt_required()
+@role_required()
 def invitation_via_link():
     """Generate invitation link only"""
     try:
@@ -299,6 +305,33 @@ def accept_invitation(encrypted_id, token):
         invite.registered_user_id = new_user.user_id
         invite.status = "ACCEPTED"
         invite.accepted_at = datetime.utcnow()
+
+        if data["user_type"].lower() == "person":
+            # Add default 'query' privilege
+            query_priv = DefPrivilege.query.filter(DefPrivilege.privilege_name.ilike('query')).first()
+            if query_priv:
+                new_priv_mapping = DefUserGrantedPrivilege(
+                    user_id=new_user.user_id,
+                    privilege_id=query_priv.privilege_id,
+                    created_by=inviter_id,
+                    creation_date=datetime.utcnow(),
+                    last_updated_by=inviter_id,
+                    last_update_date=datetime.utcnow()
+                )
+                db.session.add(new_priv_mapping)
+
+            # Add default 'User' role
+            user_role = DefRoles.query.filter(DefRoles.role_name.ilike('user')).first()
+            if user_role:
+                new_role_mapping = DefUserGrantedRole(
+                    user_id=new_user.user_id,
+                    role_id=user_role.role_id,
+                    created_by=inviter_id,
+                    creation_date=datetime.utcnow(),
+                    last_updated_by=inviter_id,
+                    last_update_date=datetime.utcnow()
+                )
+                db.session.add(new_role_mapping)
 
         db.session.commit()
 

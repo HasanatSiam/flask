@@ -2,6 +2,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
     DefGlobalConditionLogic,
@@ -14,6 +15,7 @@ from . import global_conditions_bp
 # def_global_condition_logics_attributes
 @global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_global_condition_logic_attribute():
     try:
         id = request.json.get('id')
@@ -71,6 +73,7 @@ def create_def_global_condition_logic_attribute():
 
 @global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_global_condition_logic_attributes():
     try:
         id = request.args.get('id', type=int)
@@ -104,6 +107,7 @@ def get_def_global_condition_logic_attributes():
 
 @global_conditions_bp.route('/def_global_condition_logic_attributes/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_paginated_def_global_condition_logic_attributes(page, limit):
     try:
         query = DefGlobalConditionLogicAttribute.query.order_by(DefGlobalConditionLogicAttribute.id.desc())
@@ -125,6 +129,7 @@ def get_paginated_def_global_condition_logic_attributes(page, limit):
 
 @global_conditions_bp.route('/def_global_condition_logic_attributes/upsert', methods=['POST'])
 @jwt_required()
+@role_required()
 def upsert_def_global_condition_logic_attributes():
     try:
         data_list = request.get_json()
@@ -233,6 +238,7 @@ def upsert_def_global_condition_logic_attributes():
 
 @global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_def_global_condition_logic_attribute():
     try:
         id = request.args.get('id', type=int)
@@ -266,6 +272,7 @@ def update_def_global_condition_logic_attribute():
 
 @global_conditions_bp.route('/def_global_condition_logic_attributes', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_def_global_condition_logic_attribute():
     try:
         id = request.args.get('id', type=int)

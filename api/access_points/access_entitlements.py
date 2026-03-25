@@ -16,6 +16,7 @@ from . import access_points_bp
 #def_access_entitlements
 @access_points_bp.route('/def_access_entitlements', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_access_entitlements():
     try:
         def_entitlement_id = request.args.get('def_entitlement_id', type=int)
@@ -65,6 +66,7 @@ def get_access_entitlements():
 
 @access_points_bp.route('/def_access_entitlements/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_paginated_entitlements(page, limit):
     try:
         paginated = DefAccessEntitlement.query.order_by(DefAccessEntitlement.def_entitlement_id.desc()).paginate(page=page, per_page=limit, error_out=False)
@@ -80,6 +82,7 @@ def get_paginated_entitlements(page, limit):
 
 @access_points_bp.route('/def_access_entitlements', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_entitlement():
     try:
         new_e = DefAccessEntitlement(
@@ -104,6 +107,7 @@ def create_entitlement():
 
 @access_points_bp.route('/def_access_entitlements', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_entitlement():
     try:
         def_entitlement_id = request.args.get('def_entitlement_id', type=int)
@@ -131,6 +135,7 @@ def update_entitlement():
 
 @access_points_bp.route('/def_access_entitlements', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_entitlement():
     try:
         def_entitlement_id = request.args.get('def_entitlement_id', type=int)
@@ -149,6 +154,7 @@ def delete_entitlement():
 
 @access_points_bp.route('/def_access_entitlements/cascade', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def cascade_delete_entitlement():
     try:
         def_entitlement_id = request.args.get('def_entitlement_id', type=int)

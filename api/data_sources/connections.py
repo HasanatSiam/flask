@@ -1,5 +1,6 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from datetime import datetime
 
 from executors.extensions import db
@@ -10,6 +11,7 @@ from . import data_sources_bp
 
 @data_sources_bp.route('/test_connection', methods=['POST'])
 @jwt_required()
+@role_required()
 def test_connection_from_payload():
     try:
         data = request.get_json()
@@ -24,6 +26,7 @@ def test_connection_from_payload():
 
 @data_sources_bp.route('/def_data_source_connections', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_connection():
     try:
         data = request.get_json()
@@ -62,6 +65,7 @@ def create_connection():
 
 @data_sources_bp.route('/def_data_source_connections', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_connections():
     try:
         conn_id = request.args.get('def_connection_id', type=int)
@@ -103,6 +107,7 @@ def get_connections():
 
 @data_sources_bp.route('/def_data_source_connections', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_connection():
     try:
         conn_id = request.args.get('def_connection_id', type=int)
@@ -134,6 +139,7 @@ def update_connection():
 
 @data_sources_bp.route('/def_data_source_connections', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_connection():
     try:
         conn_id = request.args.get('def_connection_id', type=int)
@@ -153,6 +159,7 @@ def delete_connection():
 
 @data_sources_bp.route('/def_data_source_connections/test/<int:def_connection_id>', methods=['POST'])
 @jwt_required()
+@role_required()
 def test_saved_connection(def_connection_id):
     try:
         conn = DefDataSourceConnection.query.get(def_connection_id)

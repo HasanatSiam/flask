@@ -16,6 +16,7 @@ from executors.models import (
 #def_access_model_logic_attributes
 @access_models_bp.route('/def_access_model_logic_attributes', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_access_model_logic_attribute():
     try:
         id = request.json.get('id')
@@ -54,6 +55,7 @@ def create_def_access_model_logic_attribute():
 
 @access_models_bp.route('/def_access_model_logic_attributes', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_access_model_logic_attributes():
     try:
         id = request.args.get('id', type=int)
@@ -84,6 +86,7 @@ def get_def_access_model_logic_attributes():
 
 @access_models_bp.route('/def_access_model_logic_attributes/upsert', methods=['POST'])
 @jwt_required()
+@role_required()
 def upsert_def_access_model_logic_attributes():
     try:
         data_list = request.get_json()
@@ -199,6 +202,7 @@ def upsert_def_access_model_logic_attributes():
 
 @access_models_bp.route('/def_access_model_logic_attributes', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_def_access_model_logic_attribute():
     try:
         id = request.args.get('id', type=int)
@@ -222,6 +226,7 @@ def update_def_access_model_logic_attribute():
 
 @access_models_bp.route('/def_access_model_logic_attributes', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_def_access_model_logic_attribute():
     try:
         id = request.args.get('id', type=int)

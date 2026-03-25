@@ -11,6 +11,7 @@ from . import users_bp
 
 @users_bp.route('/access_profiles/<int:user_id>', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_access_profiles(user_id):
     try:
         profile_type = request.json.get('profile_type') # Fixed incorrect key
@@ -65,6 +66,7 @@ def create_access_profiles(user_id):
 # Get all access profiles
 @users_bp.route('/access_profiles', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_users_access_profiles():
     try:
         profiles = DefAccessProfile.query.all()
@@ -75,6 +77,7 @@ def get_users_access_profiles():
 
 @users_bp.route('/access_profiles/<int:user_id>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_user_access_profiles_(user_id):
     try:
         profiles = DefAccessProfile.query.filter_by(user_id=user_id).all()
@@ -89,6 +92,7 @@ def get_user_access_profiles_(user_id):
 
 @users_bp.route('/access_profiles/<int:user_id>/<int:serial_number>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_access_profile(user_id, serial_number):
     try:
         # Retrieve the existing access profile
@@ -121,6 +125,7 @@ def update_access_profile(user_id, serial_number):
 # Delete an access profile
 @users_bp.route('/access_profiles/<int:user_id>/<int:serial_number>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_access_profile(user_id, serial_number):
     try:
         profile = DefAccessProfile.query.filter_by(user_id=user_id, serial_number=serial_number).first()

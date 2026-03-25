@@ -1404,7 +1404,7 @@ class DefPrivilege(db.Model):
     __tablename__ = 'def_privileges'
     __table_args__ = {'schema': 'apps'}
 
-    privilege_id = db.Column(db.Integer, primary_key=True)
+    privilege_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     privilege_name = db.Column(db.String(150), nullable=False)
     created_by = db.Column(db.Integer)
     creation_date = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1446,7 +1446,7 @@ class DefRoles(db.Model):
     __tablename__ = 'def_roles'
     __table_args__ = {'schema': 'apps'}
 
-    role_id = db.Column(db.Integer, primary_key=True)
+    role_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     role_name = db.Column(db.String(150), nullable=False)
     created_by = db.Column(db.Integer)
     creation_date = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1491,7 +1491,7 @@ class DefApiEndpoint(db.Model):
     __tablename__ = 'def_api_endpoints'
     __table_args__ = {'schema': 'apps'}
 
-    api_endpoint_id = db.Column(db.Integer, primary_key=True)
+    api_endpoint_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     api_endpoint = db.Column(db.Text)
     parameter1 = db.Column(db.Text)
     parameter2 = db.Column(db.Text)

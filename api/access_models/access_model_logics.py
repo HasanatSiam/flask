@@ -17,6 +17,7 @@ from . import access_models_bp
 #def_access_model_logics
 @access_models_bp.route('/def_access_model_logics', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_def_access_model_logic():
     try:
         def_access_model_logic_id = request.json.get('def_access_model_logic_id')
@@ -61,6 +62,7 @@ def create_def_access_model_logic():
 
 @access_models_bp.route('/def_access_model_logics/upsert', methods=['POST'])
 @jwt_required()
+@role_required()
 def upsert_def_access_model_logics():
     try:
         data_list = request.get_json()
@@ -182,6 +184,7 @@ def upsert_def_access_model_logics():
 
 @access_models_bp.route('/def_access_model_logics', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_access_model_logics():
     try:
         def_access_model_logic_id = request.args.get('def_access_model_logic_id', type=int)
@@ -214,6 +217,7 @@ def get_def_access_model_logics():
 
 @access_models_bp.route('/def_access_model_logics', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_def_access_model_logic():
     try:
         def_access_model_logic_id = request.args.get('def_access_model_logic_id', type=int)
@@ -240,6 +244,7 @@ def update_def_access_model_logic():
 
 @access_models_bp.route('/def_access_model_logics', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_def_access_model_logic():
     try:
         def_access_model_logic_id = request.args.get('def_access_model_logic_id', type=int)

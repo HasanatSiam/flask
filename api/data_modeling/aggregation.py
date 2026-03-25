@@ -1,5 +1,6 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
+from utils.auth import role_required
 from sqlalchemy import text
 from executors.extensions import db
 import re
@@ -11,6 +12,7 @@ from . import data_modeling_bp
 
 @data_modeling_bp.route('/create_aggregate_table', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_aggregate_table():
     try:
         data = request.get_json()

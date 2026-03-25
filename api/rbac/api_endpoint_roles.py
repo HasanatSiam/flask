@@ -19,6 +19,7 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_api_endpoint_roles', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_api_endpoint_role():
     try:
         api_endpoint_id = request.json.get('api_endpoint_id')
@@ -82,6 +83,7 @@ def create_api_endpoint_role():
 
 @rbac_bp.route('/def_api_endpoint_roles', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_api_endpoint_roles():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
@@ -156,6 +158,7 @@ def get_api_endpoint_roles():
 
 @rbac_bp.route('/def_api_endpoint_roles', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_api_endpoint_role():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
@@ -202,6 +205,7 @@ def update_api_endpoint_role():
 
 @rbac_bp.route('/def_api_endpoint_roles', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_api_endpoint_role():
     try:
         # Enforce JSON body for bulk deletions

@@ -69,6 +69,7 @@ def login():
 
 @users_bp.route('/def_user_credentials', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_user_credential():
     try:
         data    = request.get_json()
@@ -97,6 +98,7 @@ def create_user_credential():
 
 @users_bp.route('/reset_user_password', methods=['PUT'])
 @jwt_required()
+@role_required()
 def reset_user_password():
     try:
         data             = request.get_json()
@@ -126,6 +128,7 @@ def reset_user_password():
 
 @users_bp.route('/def_user_credentials/<int:user_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_user_credentials(user_id):
     try:
         credential = DefUserCredential.query.filter_by(user_id=user_id).first()

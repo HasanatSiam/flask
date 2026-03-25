@@ -22,6 +22,7 @@ from . import action_items_bp
 # Get all DefActionItems (Consolidated Endpoint)
 @action_items_bp.route('/def_action_items', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_action_items():
     try:
         # Query Parameters
@@ -94,6 +95,7 @@ def get_action_items():
 
 @action_items_bp.route('/def_action_items', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_action_item():
     try:
         action_item_name = request.json.get('action_item_name')
@@ -177,6 +179,7 @@ def create_action_item():
 
 @action_items_bp.route('/def_action_items/upsert', methods=['POST'])
 @jwt_required()
+@role_required()
 def upsert_action_item():
     data = request.get_json()
     if not data:
@@ -272,6 +275,7 @@ def upsert_action_item():
 
 @action_items_bp.route('/def_action_items', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_action_item():
     try:
         action_item_id = request.args.get('action_item_id', type=int)
@@ -369,6 +373,7 @@ def update_action_item():
 # Delete a DefActionItem
 @action_items_bp.route('/def_action_items/<int:action_item_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_action_item(action_item_id):
     try:
         action_item = DefActionItem.query.filter_by(action_item_id=action_item_id).first()
@@ -396,6 +401,7 @@ def delete_action_item(action_item_id):
 
 @action_items_bp.route('/def_action_items', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_multiple_action_items():
     try:
         data = request.get_json()
@@ -451,6 +457,7 @@ def delete_multiple_action_items():
 # Update DefActionItemAssignments (replace user_ids for given action_item_id)
 @action_items_bp.route('/def_action_items/update_status/<int:user_id>/<int:action_item_id>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_action_item_assignment_status(user_id, action_item_id):
     try:
         data = request.get_json()

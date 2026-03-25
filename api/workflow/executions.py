@@ -4,12 +4,14 @@ import logging
 
 from flask import request, jsonify, Response, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from executors.extensions import db
 from executors.models import DefProcessExecution, DefProcessExecutionStep
 from . import workflow_bp
 
 @workflow_bp.route('/workflow/executions', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_workflow_executions():
     try:
         process_id = request.args.get('process_id')
@@ -36,6 +38,7 @@ def get_workflow_executions():
 
 @workflow_bp.route('/workflow/execution_steps', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_workflow_execution_steps():
     try:
         def_process_execution_id = request.args.get('def_process_execution_id')
@@ -62,6 +65,7 @@ def get_workflow_execution_steps():
 
 @workflow_bp.route('/workflow/execution_stream/<int:execution_id>', methods=['GET'])
 @jwt_required(optional=True, locations=['headers', 'query_string'])
+@role_required()
 def stream_execution(execution_id):
     """
     SSE endpoint for real-time workflow execution status.

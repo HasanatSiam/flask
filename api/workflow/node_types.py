@@ -1,5 +1,6 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from datetime import datetime
 from executors.extensions import db
 from executors.models import DefProcessNodeType
@@ -7,6 +8,7 @@ from . import workflow_bp
 
 @workflow_bp.route('/workflow/node_types', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_node_types():
     try:
         def_node_type_id = request.args.get('def_node_type_id')
@@ -24,6 +26,7 @@ def get_node_types():
 
 @workflow_bp.route('/workflow/node_types', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_node_type():
     try:
         data = request.json
@@ -60,6 +63,7 @@ def create_node_type():
 
 @workflow_bp.route('/workflow/node_types', methods=['PUT', 'DELETE'])
 @jwt_required()
+@role_required()
 def manage_node_type():
     try:
         def_node_type_id = request.args.get('def_node_type_id')
