@@ -22,51 +22,60 @@ from . import rbac_bp
 @role_required()
 def create_api_endpoint_role():
     try:
-        api_endpoint_id = request.json.get('api_endpoint_id')
-        role_id = request.json.get('role_id')
-
+        data = request.json
+        api_endpoint_id = data.get('api_endpoint_id')
+        role_ids = data.get('role_ids')
 
         # Validation
-        if not api_endpoint_id or not role_id:
+        if api_endpoint_id is None or role_ids is None or not isinstance(role_ids, list):
             return make_response(jsonify({
-                "error": "api_endpoint_id and role_id are required"
+                "error": "api_endpoint_id (int) and role_ids (list) are required"
             }), 400)
 
-        # FK Check: API Endpoint
-        endpoint = DefApiEndpoint.query.filter_by(api_endpoint_id=api_endpoint_id).first()
+        # 1. FK Check: API Endpoint
+        endpoint = DefApiEndpoint.query.get(api_endpoint_id)
         if not endpoint:
             return make_response(jsonify({
                 "error": f"API Endpoint ID {api_endpoint_id} does not exist"
             }), 404)
 
-        # FK Check: Role
-        role = DefRoles.query.filter_by(role_id=role_id).first()
-        if not role:
+        # 2. FK Check: Roles
+        valid_roles = DefRoles.query.filter(DefRoles.role_id.in_(role_ids)).all()
+        found_role_ids = {r.role_id for r in valid_roles}
+        missing_role_ids = list(set(role_ids) - found_role_ids)
+        
+        if missing_role_ids:
             return make_response(jsonify({
-                "error": f"Role ID {role_id} does not exist"
+                "error": "Some roles do not exist",
+                "missing_role_ids": missing_role_ids
             }), 404)
 
-        # Check duplicate
-        existing = DefApiEndpointRole.query.filter_by(
-            api_endpoint_id=api_endpoint_id,
-            role_id=role_id
-        ).first()
-        if existing:
+        # 3. Filter out existing mappings (Duplicate Prevention)
+        existing_mappings = DefApiEndpointRole.query.filter_by(api_endpoint_id=api_endpoint_id).all()
+        existing_role_ids = {m.role_id for m in existing_mappings}
+        
+        roles_to_add = set(role_ids) - existing_role_ids
+
+        if not roles_to_add:
             return make_response(jsonify({
-                "error": "Mapping already exists"
-            }), 409)
+                "message": "All provided role mappings already exist",
+                "added_count": 0
+            }), 200)
 
-        new_mapping = DefApiEndpointRole(
-            api_endpoint_id=api_endpoint_id,
-            role_id=role_id,
-            created_by     = get_jwt_identity(),
-            creation_date  = datetime.utcnow(),
-            last_updated_by = get_jwt_identity(),
-            last_update_date = datetime.utcnow()
+        # 4. Batch Create
+        identity = get_jwt_identity()
+        now = datetime.utcnow()
+        for rid in roles_to_add:
+            new_mapping = DefApiEndpointRole(
+                api_endpoint_id=api_endpoint_id,
+                role_id=rid,
+                created_by=identity,
+                creation_date=now,
+                last_updated_by=identity,
+                last_update_date=now
+            )
+            db.session.add(new_mapping)
 
-        )
-
-        db.session.add(new_mapping)
         db.session.commit()
 
         return make_response(jsonify({
@@ -77,7 +86,7 @@ def create_api_endpoint_role():
         db.session.rollback()
         return make_response(jsonify({
             "error": str(e),
-            "message": "Error creating API endpoint role"
+            "message": "Error creating API endpoint roles"
         }), 500)
 
 
@@ -162,36 +171,75 @@ def get_api_endpoint_roles():
 def update_api_endpoint_role():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
-        role_id = request.args.get("role_id", type=int)
 
-        # Validate required params
-        if api_endpoint_id is None or role_id is None:
+        if api_endpoint_id is None:
             return make_response(jsonify({
-                "error": "Query parameters 'api_endpoint_id' and 'role_id' are required"
+                "error": "Query parameter 'api_endpoint_id' is required"
             }), 400)
 
-        record = DefApiEndpointRole.query.filter_by(
-            api_endpoint_id=api_endpoint_id,
-            role_id=role_id
-        ).first()
+        data = request.json
+        new_role_ids = data.get("role_ids")
 
-        if not record:
+        if new_role_ids is None or not isinstance(new_role_ids, list):
             return make_response(jsonify({
-                "error": "Record not found",
-                "message": "API Endpoint-Role mapping does not exist"
-            }), 404)
-        
-        record.api_endpoint_id = request.json.get('api_endpoint_id', record.api_endpoint_id)
-        record.role_id = request.json.get('role_id', record.role_id)
+                "error": "Body parameter 'role_ids' (list) is required"
+            }), 400)
 
-        record.last_updated_by = get_jwt_identity()
-        record.last_update_date = datetime.utcnow()
+        # 1. Validate Endpoint exists
+        endpoint = DefApiEndpoint.query.get(api_endpoint_id)
+        if not endpoint:
+            return make_response(jsonify({"error": f"API Endpoint ID {api_endpoint_id} not found"}), 404)
+
+        # 2. Validate all new Roles exist
+        valid_roles = DefRoles.query.filter(DefRoles.role_id.in_(new_role_ids)).all()
+        found_role_ids = {r.role_id for r in valid_roles}
+        missing_role_ids = list(set(new_role_ids) - found_role_ids)
+        
+        if missing_role_ids:
+            return make_response(jsonify({
+                "error": "Some roles do not exist",
+                "missing_role_ids": missing_role_ids
+            }), 404)
+
+        # 3. Synchronize Mappings
+        current_mappings = DefApiEndpointRole.query.filter_by(api_endpoint_id=api_endpoint_id).all()
+        current_role_ids = {m.role_id for m in current_mappings}
+        
+        incoming_role_ids = set(new_role_ids)
+        
+        roles_to_add = incoming_role_ids - current_role_ids
+        roles_to_remove = current_role_ids - incoming_role_ids
+
+        # Delete removed roles
+        if roles_to_remove:
+            DefApiEndpointRole.query.filter(
+                DefApiEndpointRole.api_endpoint_id == api_endpoint_id,
+                DefApiEndpointRole.role_id.in_(list(roles_to_remove))
+            ).delete(synchronize_session=False)
+
+        # Add new roles
+        identity = get_jwt_identity()
+        now = datetime.utcnow()
+        for rid in roles_to_add:
+            new_mapping = DefApiEndpointRole(
+                api_endpoint_id=api_endpoint_id,
+                role_id=rid,
+                created_by=identity,
+                creation_date=now,
+                last_updated_by=identity,
+                last_update_date=now
+            )
+            db.session.add(new_mapping)
 
         db.session.commit()
 
+        # Fetch final state for response
+        final_state = DefApiEndpointRole.query.filter_by(api_endpoint_id=api_endpoint_id).all()
+
         return make_response(jsonify({
             "message": "Edited successfully",
-            "data": record.json()
+            "api_endpoint_id": api_endpoint_id,
+            "role_ids": [m.role_id for m in final_state]
         }), 200)
 
     except Exception as e:
