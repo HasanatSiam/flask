@@ -1,5 +1,7 @@
 # PROCG (Proactive Controls and Governance) Backend
 
+**PRO-CG is a Robust, Reliable and Secure System of Record designed to deliver actionable Insights and meet the complex needs of Modern Enterprises, Multinational Organizations, Government Agencies, and Non-Government Institutions - supporting Compliance, Internal Controls and Risk Management requirements!**
+
 The backend repository for the PROCG web application.
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)

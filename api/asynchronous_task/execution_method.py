@@ -16,6 +16,7 @@ from . import async_task_bp
 
 @async_task_bp.route('/Create_ExecutionMethod', methods=['POST'])
 @jwt_required()
+@role_required()
 def Create_ExecutionMethod():
     try:
         execution_method = request.json.get('execution_method')
@@ -57,6 +58,7 @@ def Create_ExecutionMethod():
 
 @async_task_bp.route('/Show_ExecutionMethods', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_ExecutionMethods():
     try:
         methods = DefAsyncExecutionMethods.query.order_by(DefAsyncExecutionMethods.internal_execution_method.desc()).all()
@@ -80,6 +82,7 @@ def Show_ExecutionMethods_v1():
 
 @async_task_bp.route('/Show_ExecutionMethods/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def paginated_execution_methods(page, limit):
     try:
         paginated = DefAsyncExecutionMethods.query.order_by(DefAsyncExecutionMethods.creation_date.desc()).paginate(page=page, per_page=limit, error_out=False)
@@ -101,6 +104,7 @@ def paginated_execution_methods(page, limit):
 
 @async_task_bp.route('/def_async_execution_methods/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def search_execution_methods(page, limit):
     try:
         search_query = request.args.get('internal_execution_method', '').strip().lower()
@@ -138,6 +142,7 @@ def search_execution_methods(page, limit):
 
 @async_task_bp.route('/Show_ExecutionMethod/<string:internal_execution_method>', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_ExecutionMethod(internal_execution_method):
     try:
         method = db.session.query(DefAsyncExecutionMethods).filter_by(internal_execution_method=internal_execution_method).first()
@@ -150,6 +155,7 @@ def Show_ExecutionMethod(internal_execution_method):
 
 @async_task_bp.route('/Update_ExecutionMethod/<string:internal_execution_method>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Update_ExecutionMethod(internal_execution_method):
     try:
         execution_method = DefAsyncExecutionMethods.query.filter_by(internal_execution_method=internal_execution_method).first()
@@ -179,6 +185,7 @@ def Update_ExecutionMethod(internal_execution_method):
 
 @async_task_bp.route('/Delete_ExecutionMethod/<string:internal_execution_method>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def Delete_ExecutionMethod(internal_execution_method):
     try:
         # Find the execution method by internal_execution_method

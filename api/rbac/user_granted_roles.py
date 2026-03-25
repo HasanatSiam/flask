@@ -9,7 +9,9 @@ from executors.extensions import cache
 from executors.models import (
     DefUser,
     DefRoles,
-    DefUserGrantedRole
+    DefUserGrantedRole,
+    DefPrivilege,
+    DefUserGrantedPrivilege
 )
 
 from utils.auth import role_required
@@ -22,6 +24,7 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_user_granted_roles', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_user_granted_roles():
     try:
         data = request.json
@@ -64,7 +67,12 @@ def create_user_granted_roles():
 
         # 3. Create new mappings
         new_mappings = []
+        is_super_admin = False
+        
         for role in roles:
+            if role.role_name.lower() == 'super admin':
+                is_super_admin = True
+                
             new_mapping = DefUserGrantedRole(
                 user_id=user_id,
                 role_id=role.role_id,
@@ -75,6 +83,23 @@ def create_user_granted_roles():
             )
             db.session.add(new_mapping)
             new_mappings.append(new_mapping)
+
+        # Auto-assign all privileges if Super Admin is granted
+        if is_super_admin:
+            all_privs = DefPrivilege.query.all()
+            existing_user_privs = DefUserGrantedPrivilege.query.filter_by(user_id=user_id).all()
+            existing_priv_ids = {p.privilege_id for p in existing_user_privs}
+            
+            for priv in all_privs:
+                if priv.privilege_id not in existing_priv_ids:
+                    db.session.add(DefUserGrantedPrivilege(
+                        user_id=user_id,
+                        privilege_id=priv.privilege_id,
+                        created_by=get_jwt_identity(),
+                        creation_date=datetime.utcnow(),
+                        last_updated_by=get_jwt_identity(),
+                        last_update_date=datetime.utcnow()
+                    ))
 
         db.session.commit()
 
@@ -98,6 +123,7 @@ def create_user_granted_roles():
 
 @rbac_bp.route('/def_user_granted_roles', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_user_granted_roles():
     try:
         user_id = request.args.get('user_id', type=int)
@@ -144,6 +170,7 @@ def get_user_granted_roles():
 
 @rbac_bp.route('/def_user_granted_roles', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_user_granted_roles():
     try:
         # user_id from query params
@@ -197,7 +224,12 @@ def update_user_granted_roles():
             ).delete(synchronize_session=False)
 
         # Add new roles
+        is_super_admin_assigned = False
         for rid in to_add:
+            role = DefRoles.query.filter_by(role_id=rid).first()
+            if role and role.role_name.lower() == 'super admin':
+                is_super_admin_assigned = True
+            
             db.session.add(
                 DefUserGrantedRole(
                     user_id=user_id,
@@ -208,6 +240,23 @@ def update_user_granted_roles():
                     last_update_date=now
                 )
             )
+
+        # Auto-assign all privileges if Super Admin is newly granted
+        if is_super_admin_assigned:
+            all_privs = DefPrivilege.query.all()
+            existing_user_privs = DefUserGrantedPrivilege.query.filter_by(user_id=user_id).all()
+            existing_priv_ids = {p.privilege_id for p in existing_user_privs}
+            
+            for priv in all_privs:
+                if priv.privilege_id not in existing_priv_ids:
+                    db.session.add(DefUserGrantedPrivilege(
+                        user_id=user_id,
+                        privilege_id=priv.privilege_id,
+                        created_by=current_user,
+                        creation_date=now,
+                        last_updated_by=current_user,
+                        last_update_date=now
+                    ))
 
         # Update audit fields for kept roles
         for rid in incoming_role_ids & existing_role_ids:
@@ -239,6 +288,7 @@ def update_user_granted_roles():
 
 @rbac_bp.route('/def_user_granted_roles', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_user_granted_role():
     try:
 

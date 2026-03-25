@@ -33,6 +33,7 @@ from . import async_task_bp
 
 @async_task_bp.route('/Create_TaskSchedule', methods=['POST'])
 @jwt_required()
+@role_required()
 def Create_TaskSchedule():
     try:
         user_schedule_name = request.json.get('user_schedule_name', 'Immediate')
@@ -280,6 +281,7 @@ def Create_TaskSchedule():
 
 @async_task_bp.route('/Show_TaskSchedules', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_TaskSchedules():
     try:
     #     schedules = DefAsyncTaskSchedulesV.query \
@@ -298,6 +300,7 @@ def Show_TaskSchedules():
 
 @async_task_bp.route('/def_async_task_schedules/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def paginated_task_schedules(page, limit):
     try:
         paginated = DefAsyncTaskSchedulesV.query.order_by(
@@ -316,6 +319,7 @@ def paginated_task_schedules(page, limit):
 
 @async_task_bp.route('/def_async_task_schedules/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def search_task_schedules(page, limit):
     try:
         search_query = request.args.get('task_name', '').strip().lower()
@@ -351,6 +355,7 @@ def search_task_schedules(page, limit):
 
 @async_task_bp.route('/Show_TaskSchedule/<string:task_name>', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_TaskSchedule(task_name):
     try:
         schedule = DefAsyncTaskSchedule.query.filter_by(task_name=task_name).first()
@@ -368,6 +373,7 @@ def Show_TaskSchedule(task_name):
 
 @async_task_bp.route('/Update_TaskSchedule/<string:task_name>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Update_TaskSchedule(task_name):
     try:
         redbeat_schedule_name = request.json.get('redbeat_schedule_name')
@@ -459,6 +465,7 @@ def Update_TaskSchedule(task_name):
 
 @async_task_bp.route('/Cancel_TaskSchedule/<string:task_name>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Cancel_TaskSchedule(task_name):
     try:
         # Extract redbeat_schedule_name from payload
@@ -501,6 +508,7 @@ def Cancel_TaskSchedule(task_name):
 
 @async_task_bp.route('/Reschedule_Task/<string:task_name>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Reschedule_TaskSchedule(task_name):
     try:
         data = request.get_json()

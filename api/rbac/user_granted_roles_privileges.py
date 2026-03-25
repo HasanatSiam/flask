@@ -6,6 +6,7 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_user_granted_roles_privileges', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_user_granted_roles_privileges():
     try:
         # Base query

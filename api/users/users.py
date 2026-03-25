@@ -6,7 +6,9 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from executors.extensions import db
 from utils.auth import role_required
 from executors.models import(DefUser, 
-                             DefPerson, DefUsersView, DefUserCredential, DefAccessProfile, NewUserInvitation)
+                             DefPerson, DefUsersView, DefUserCredential, DefAccessProfile, NewUserInvitation,
+                             DefPrivilege, DefUserGrantedPrivilege,
+                             DefRoles, DefUserGrantedRole)
 from . import users_bp
 
 
@@ -14,6 +16,7 @@ from . import users_bp
 
 @users_bp.route('/users', methods=['POST'])
 @jwt_required()
+@role_required()
 def register_user():
     try:
         data = request.get_json()
@@ -115,6 +118,32 @@ def register_user():
                 user_invitation.status             = "ACCEPTED"
                 user_invitation.accepted_at        = datetime.utcnow()
         
+        if user_type.lower() == "person":
+            # Add default 'query' privilege
+            query_priv = DefPrivilege.query.filter(DefPrivilege.privilege_name.ilike('query')).first()
+            if query_priv:
+                new_priv_mapping = DefUserGrantedPrivilege(
+                    user_id=new_user.user_id,
+                    privilege_id=query_priv.privilege_id,
+                    created_by=created_by,
+                    creation_date=datetime.utcnow(),
+                    last_updated_by=last_updated_by,
+                    last_update_date=datetime.utcnow()
+                )
+                db.session.add(new_priv_mapping)
+
+            # Add default 'User' role
+            user_role = DefRoles.query.filter(DefRoles.role_name.ilike('user')).first()
+            if user_role:
+                new_role_mapping = DefUserGrantedRole(
+                    user_id=new_user.user_id,
+                    role_id=user_role.role_id,
+                    created_by=created_by,
+                    creation_date=datetime.utcnow(),
+                    last_updated_by=last_updated_by,
+                    last_update_date=datetime.utcnow()
+                )
+                db.session.add(new_role_mapping)
 
         db.session.commit()
         return jsonify({"message": "Added successfully", "user_id": new_user.user_id}), 201
@@ -127,6 +156,7 @@ def register_user():
 
 @users_bp.route('/users', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_users_unified():
     try:
         # Check for specific user ID
@@ -180,6 +210,7 @@ def get_users_unified():
 
 @users_bp.route('/users/<int:user_id>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_specific_user(user_id):
     try:
         data = request.get_json()
@@ -255,6 +286,7 @@ def update_specific_user(user_id):
 
 @users_bp.route('/users/<int:user_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_specific_user(user_id):
     try:
         # Find the user record in the DefUser table

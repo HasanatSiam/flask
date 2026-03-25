@@ -16,6 +16,7 @@ from . import action_items_bp
 # Create DefActionItemAssignments (multiple user_ids)
 @action_items_bp.route('/def_action_item_assignments', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_action_item_assignments():
     try:
         action_item_id = request.json.get('action_item_id')
@@ -56,6 +57,7 @@ def create_action_item_assignments():
 # Get all DefActionItemAssignments
 @action_items_bp.route('/def_action_item_assignments', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_action_item_assignments():
     try:
         assignments = DefActionItemAssignment.query.order_by(DefActionItemAssignment.action_item_id.desc()).all()
@@ -73,6 +75,7 @@ def get_action_item_assignments():
 # Delete a single DefActionItemAssignment
 @action_items_bp.route('/def_action_item_assignments/<int:user_id>/<int:action_item_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_action_item_assignment(action_item_id, user_id):
     try:
         assignment = DefActionItemAssignment.query.filter_by(

@@ -12,6 +12,7 @@ from . import users_bp
 
 @users_bp.route('/defpersons', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_arc_person():
     try:
         data = request.get_json()
@@ -47,6 +48,7 @@ def create_arc_person():
     
 @users_bp.route('/defpersons', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_persons():
     try:
         persons = DefPerson.query.all()
@@ -59,6 +61,7 @@ def get_persons():
 
 @users_bp.route('/defpersons/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_paginated_persons(page, limit):
     try:
         query = DefPerson.query.order_by(DefPerson.user_id.desc())
@@ -75,6 +78,7 @@ def get_paginated_persons(page, limit):
 
 @users_bp.route('/defpersons/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def search_def_persons(page, limit):
     try:
         search_query = request.args.get('name', '').strip().lower()
@@ -108,6 +112,7 @@ def search_def_persons(page, limit):
 
 @users_bp.route('/defpersons/<int:user_id>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_person(user_id):
     try:
         person = DefPerson.query.filter_by(user_id=user_id).first()
@@ -120,6 +125,7 @@ def get_person(user_id):
 
 @users_bp.route('/defpersons/<int:user_id>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_person(user_id):
     try:
         person = DefPerson.query.filter_by(user_id=user_id).first()
@@ -145,6 +151,7 @@ def update_person(user_id):
     
 @users_bp.route('/defpersons/<int:user_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_person(user_id):
     try:
         person = DefPerson.query.filter_by(user_id=user_id).first()

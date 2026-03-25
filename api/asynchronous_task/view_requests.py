@@ -18,6 +18,7 @@ from . import async_task_bp
 
 @async_task_bp.route('/view_requests_v1', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_all_tasks():
     try:
         fourteen_days = datetime.utcnow() - timedelta(days=2)
@@ -33,6 +34,7 @@ def get_all_tasks():
 
 @async_task_bp.route('/view_requests_v2', methods=['GET'])
 @jwt_required()
+@role_required()
 def view_requests_v2():
     try:
         fourteen_days = datetime.utcnow() - timedelta(days=4)
@@ -51,6 +53,7 @@ def view_requests_v2():
 #def_async_task_requests
 @async_task_bp.route('/view_requests/<int:page>/<int:page_limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def view_requests(page, page_limit):
     try:
         # Query params
@@ -107,6 +110,7 @@ def view_requests(page, page_limit):
 
 @async_task_bp.route('/view_requests/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def def_async_task_requests_view_requests(page, limit):
     try:
         search_query = request.args.get('task_name', '').strip().lower()
@@ -139,6 +143,7 @@ def def_async_task_requests_view_requests(page, limit):
 
 @async_task_bp.route('/view_requests_v3/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def combined_tasks_v3(page, limit):
     try:
         days = request.args.get('days', type=int)
@@ -206,6 +211,7 @@ def combined_tasks_v3(page, limit):
 
 @async_task_bp.route('/view_requests_v4/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def combined_tasks_v4(page, limit):
     try:
         days = request.args.get('days', type=int)

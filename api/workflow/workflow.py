@@ -6,6 +6,7 @@ CRUD for workflows.
 
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from utils.auth import role_required
 from datetime import datetime
 import os
 from threading import Thread
@@ -27,6 +28,7 @@ from . import workflow_bp
 
 @workflow_bp.route('/workflow', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_workflow():
     try:
         data = request.json
@@ -72,6 +74,7 @@ def create_workflow():
 
 @workflow_bp.route('/workflow', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_workflow():
     try:
         process_id = request.args.get('process_id')
@@ -111,6 +114,7 @@ def update_workflow():
 
 @workflow_bp.route('/workflow', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_all_workflows():
     try:
         process_id = request.args.get('process_id')
@@ -136,6 +140,7 @@ def get_all_workflows():
 
 @workflow_bp.route('/workflow', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_workflow():
     try:
         process_id = request.args.get('process_id')
@@ -162,6 +167,7 @@ def delete_workflow():
 
 @workflow_bp.route('/workflow/validate', methods=['POST'])
 @jwt_required()
+@role_required()
 def validate_workflow():
     try:
         data = request.get_json(silent=True)
@@ -193,6 +199,7 @@ def validate_workflow():
 
 @workflow_bp.route('/workflow/required_params', methods=['POST'])
 @jwt_required()
+@role_required()
 def get_required_params():
     """
     Get required USER parameters for a workflow - analyzes task dependencies.
@@ -402,6 +409,7 @@ def get_required_params():
 
 @workflow_bp.route('/workflow/run/<int:process_id>', methods=['POST'])
 @jwt_required()
+@role_required()
 def run_workflow(process_id):
     """
     Run a workflow asynchronously.
@@ -445,6 +453,7 @@ def run_workflow(process_id):
 
 @workflow_bp.route('/workflow/run_dynamic', methods=['POST'])
 @jwt_required()
+@role_required()
 def run_adhoc_workflow():
     """
     Run an unsaved workflow asynchronously tracking execution history.
@@ -516,6 +525,7 @@ def run_adhoc_workflow():
 
 @workflow_bp.route('/workflow/predecessor_outputs', methods=['POST'])
 @jwt_required()
+@role_required()
 def get_predecessor_outputs_api():
     """
     Get available output fields from predecessor nodes for a given decision node.

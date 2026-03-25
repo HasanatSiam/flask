@@ -19,28 +19,20 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_api_endpoints', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_api_endpoint():
     try:
-        api_endpoint_id = request.json.get('api_endpoint_id')
         api_endpoint = request.json.get('api_endpoint')
         parameter1 = request.json.get('parameter1')
         parameter2 = request.json.get('parameter2')
         method = request.json.get('method')
         privilege_id = request.json.get('privilege_id')
 
-
-        if not api_endpoint_id:
-            return make_response(jsonify({'error': 'api_endpoint_id is required'}), 400)
-
-        if DefApiEndpoint.query.filter_by(api_endpoint_id=api_endpoint_id).first():
-            return make_response(jsonify({'error': 'api_endpoint_id already exists'}), 400)
-
         # FK validation
         if privilege_id and not DefPrivilege.query.filter_by(privilege_id=privilege_id).first():
             return make_response(jsonify({'error': 'privilege_id not found'}), 404)
 
         new_api = DefApiEndpoint(
-            api_endpoint_id=api_endpoint_id,
             api_endpoint=api_endpoint,
             parameter1=parameter1,
             parameter2=parameter2,
@@ -67,6 +59,7 @@ def create_api_endpoint():
 
 @rbac_bp.route('/def_api_endpoints', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_api_endpoints():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
@@ -126,6 +119,7 @@ def get_api_endpoints():
 
 @rbac_bp.route('/def_api_endpoints', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_api_endpoint():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
@@ -164,6 +158,7 @@ def update_api_endpoint():
 
 @rbac_bp.route('/def_api_endpoints', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_api_endpoint():
     try:
         # Enforce JSON body for bulk deletions

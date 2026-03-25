@@ -15,6 +15,7 @@ from . import async_task_bp
 # Create a task definition
 @async_task_bp.route('/Create_Task', methods=['POST'])
 @jwt_required()
+@role_required()
 def Create_Task():
     try:
         user_task_name = request.json.get('user_task_name')
@@ -57,6 +58,7 @@ def Create_Task():
 
 @async_task_bp.route('/def_async_tasks', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_Tasks():
     try:
         tasks = DefAsyncTask.query.order_by(DefAsyncTask.def_task_id.desc()).all()
@@ -76,6 +78,7 @@ def Show_Tasks_v1():
 
 @async_task_bp.route('/def_async_tasks/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_Tasks_Paginated(page, limit):
     try:
         tasks = DefAsyncTask.query.order_by(DefAsyncTask.creation_date.desc())
@@ -93,6 +96,7 @@ def Show_Tasks_Paginated(page, limit):
 
 @async_task_bp.route('/def_async_tasks/search/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def def_async_tasks_show_tasks(page, limit):
     try:
         search_query = request.args.get('user_task_name', '').strip().lower()
@@ -120,6 +124,7 @@ def def_async_tasks_show_tasks(page, limit):
 
 @async_task_bp.route('/Show_Task/<task_name>', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_Task(task_name):
     try:
         task = DefAsyncTask.query.filter_by(task_name=task_name).first()
@@ -135,6 +140,7 @@ def Show_Task(task_name):
 
 @async_task_bp.route('/Update_Task/<string:task_name>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Update_Task(task_name):
     try:
         task = DefAsyncTask.query.filter_by(task_name=task_name).first()
@@ -166,6 +172,7 @@ def Update_Task(task_name):
 
 @async_task_bp.route('/Cancel_Task/<string:task_name>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Cancel_Task(task_name):
     try:
         # Find the task by task_name in the DEF_ASYNC_TASKS table

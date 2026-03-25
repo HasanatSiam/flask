@@ -15,6 +15,7 @@ from . import async_task_bp
 
 @async_task_bp.route('/Add_TaskParams/<string:task_name>', methods=['POST'])
 @jwt_required()
+@role_required()
 def Add_TaskParams(task_name):
     try:
         # Check if the task exists in the DEF_ASYNC_TASKS table
@@ -71,6 +72,7 @@ def Add_TaskParams(task_name):
 
 @async_task_bp.route('/Show_TaskParams/<string:task_name>', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_Parameter(task_name):
     try:
         parameters = DefAsyncTaskParam.query.filter_by(task_name=task_name).all()
@@ -87,6 +89,7 @@ def Show_Parameter(task_name):
 
 @async_task_bp.route('/Show_TaskParams/<string:task_name>/<int:page>/<int:limit>', methods=['GET'])
 @jwt_required()
+@role_required()
 def Show_TaskParams_Paginated(task_name, page, limit):
     try:
         query = DefAsyncTaskParam.query.filter_by(task_name=task_name)
@@ -108,6 +111,7 @@ def Show_TaskParams_Paginated(task_name, page, limit):
 
 @async_task_bp.route('/Update_TaskParams/<string:task_name>/<int:def_param_id>', methods=['PUT'])
 @jwt_required()
+@role_required()
 def Update_TaskParams(task_name, def_param_id):
     try:
         # Get the updated values from the request body
@@ -146,6 +150,7 @@ def Update_TaskParams(task_name, def_param_id):
 
 @async_task_bp.route('/Delete_TaskParams/<string:task_name>/<int:def_param_id>', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def Delete_TaskParams(task_name, def_param_id):
     try:
         # Find the task parameter by task_name and seq

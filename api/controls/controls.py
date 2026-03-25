@@ -20,6 +20,7 @@ from . import controls_bp
 #DEF_CONTROLS
 @controls_bp.route('/def_controls', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_def_controls():
     try:
         def_control_id = request.args.get('def_control_id', type=int)
@@ -69,6 +70,7 @@ def get_def_controls():
 
 @controls_bp.route('/def_controls', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_control():
     try:
         new_control = DefControl(
@@ -100,6 +102,7 @@ def create_control():
 
 @controls_bp.route('/def_controls', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_control():
     try:
         def_control_id = request.args.get('def_control_id', type=int)
@@ -135,6 +138,7 @@ def update_control():
 
 @controls_bp.route('/def_controls', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_control():
     try:
         def_control_id = request.args.get('def_control_id', type=int)

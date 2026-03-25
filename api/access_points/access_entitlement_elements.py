@@ -17,6 +17,7 @@ from . import access_points_bp
 
 @access_points_bp.route('/def_access_entitlement_elements', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_entitlement_element():
     try:
         def_entitlement_id = request.args.get('def_entitlement_id', type=int)
@@ -75,6 +76,7 @@ def create_entitlement_element():
 
 @access_points_bp.route('/def_access_entitlement_elements', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_entitlement_elements():
     try:
         # Query parameters
@@ -99,6 +101,7 @@ def get_entitlement_elements():
 
 @access_points_bp.route('/def_access_entitlement_elements', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_entitlement_element():
     try:
         def_entitlement_id = request.args.get('def_entitlement_id', type=int)

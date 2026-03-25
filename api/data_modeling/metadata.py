@@ -1,5 +1,6 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
+from utils.auth import role_required
 from sqlalchemy import text, inspect, and_, case, create_engine
 import datetime
 from decimal import Decimal
@@ -70,6 +71,7 @@ def _serialize_data(obj):
 
 @data_modeling_bp.route('/tables', methods=['GET'])
 @jwt_required()
+@role_required()
 def tables_handler():
     try:
         table_name = request.args.get('table')
@@ -161,6 +163,7 @@ def tables_handler():
 
 @data_modeling_bp.route('/tables/v1', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_all_tables_v1():
     try:
         # Query full model objects to use .json()
@@ -198,6 +201,7 @@ def get_all_tables_v1():
 
 @data_modeling_bp.route('/tables/v1/<string:table_name>', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_table_metadata_v1(table_name):
     try:
         schema_name = request.args.get('schema', 'public')
@@ -224,6 +228,7 @@ def get_table_metadata_v1(table_name):
 
 @data_modeling_bp.route('/datasource/metadata', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_datasource_metadata():
     """
     Get schemas and tables for a specific datasource.
@@ -287,6 +292,7 @@ def get_datasource_metadata():
 
 @data_modeling_bp.route('/table/columns', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_table_columns():
     """
     Get column metadata for a specific table or all tables.
@@ -401,6 +407,7 @@ def get_table_columns():
 
 @data_modeling_bp.route('/table/data', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_table_data():
     """
     Get all data for a specific table with pagination.

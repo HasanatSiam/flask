@@ -18,6 +18,7 @@ from . import access_points_bp
 
 @access_points_bp.route("/def_access_points", methods=["POST"])
 @jwt_required()
+@role_required()
 def create_access_point():
     try:
         data = request.get_json() or {}
@@ -79,6 +80,7 @@ def create_access_point():
 
 @access_points_bp.route("/def_access_points", methods=["GET"])
 @jwt_required()
+@role_required()
 def get_access_points():
     try:
         def_access_point_id = request.args.get("def_access_point_id", type=int)
@@ -124,6 +126,7 @@ def get_access_points():
 
 @access_points_bp.route("/def_access_points_view", methods=["GET"])
 @jwt_required()
+@role_required()
 def get_access_point_view():
     try:
         def_access_point_id = request.args.get("def_access_point_id", type=int)
@@ -185,6 +188,7 @@ def get_access_point_view():
 
 @access_points_bp.route("/def_access_points", methods=["PUT"])
 @jwt_required()
+@role_required()
 def update_access_point():
     try:
         def_access_point_id = request.args.get("def_access_point_id", type=int)
@@ -249,6 +253,7 @@ def update_access_point():
 
 @access_points_bp.route("/def_access_points", methods=["DELETE"])
 @jwt_required()
+@role_required()
 def delete_access_point():
     try:
         # Get the access point ID from query params

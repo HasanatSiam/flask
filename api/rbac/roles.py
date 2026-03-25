@@ -19,23 +19,15 @@ from api.rbac import rbac_bp
 
 @rbac_bp.route('/def_roles', methods=['POST'])
 @jwt_required()
+@role_required()
 def create_role():
     try:
-        role_id = request.json.get('role_id')
         role_name = request.json.get('role_name')
-
-        if not role_id:
-            return make_response(jsonify({'error': 'role_id is required'}), 400)
 
         if not role_name:
             return make_response(jsonify({'error': 'role_name is required'}), 400)
 
-        existing = DefRoles.query.filter_by(role_id=role_id).first()
-        if existing:
-            return make_response(jsonify({'error': 'role_id already exists'}), 400)
-
         new_role = DefRoles(
-            role_id=role_id,
             role_name=role_name,
             created_by     = get_jwt_identity(),
             creation_date  = datetime.utcnow(),
@@ -61,6 +53,7 @@ def create_role():
 
 @rbac_bp.route('/def_roles', methods=['GET'])
 @jwt_required()
+@role_required()
 def get_roles():
     try:
         role_id = request.args.get("role_id", type=int)
@@ -88,6 +81,7 @@ def get_roles():
 
 @rbac_bp.route('/def_roles', methods=['PUT'])
 @jwt_required()
+@role_required()
 def update_role():
     try:
         role_id = request.args.get("role_id", type=int)
@@ -124,6 +118,7 @@ def update_role():
 
 @rbac_bp.route('/def_roles', methods=['DELETE'])
 @jwt_required()
+@role_required()
 def delete_role():
     try:
         role_id = request.args.get("role_id", type=int)
