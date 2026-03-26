@@ -24,7 +24,7 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_user_granted_roles', methods=['POST'])
 @jwt_required()
-@role_required()
+# @role_required()
 def create_user_granted_roles():
     try:
         data = request.json
@@ -170,7 +170,7 @@ def get_user_granted_roles():
 
 @rbac_bp.route('/def_user_granted_roles', methods=['PUT'])
 @jwt_required()
-@role_required()
+# @role_required()
 def update_user_granted_roles():
     try:
         # user_id from query params

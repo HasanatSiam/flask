@@ -95,7 +95,7 @@ def _fetch_all_items(app):
 
 @dashboard_bp.route('/dashboard/summary', methods=['GET'])
 @jwt_required()
-@role_required()
+# @role_required()
 @cache.cached(timeout=60, key_prefix='dashboard_summary')
 def get_dashboard_summary():
     try:
