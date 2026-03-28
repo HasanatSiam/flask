@@ -9,8 +9,7 @@ from executors.models import (
     DefApiEndpoint,
     DefApiEndpointRole,
     DefRoles,
-    DefApiEndpointRolesV,
-    DefRoleApiEndpointsV
+    DefApiEndpointRolesV
 
 )
 
