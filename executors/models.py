@@ -1540,6 +1540,36 @@ class DefApiEndpointRole(db.Model):
         }
 
 
+class DefApiEndpointRolesV(db.Model):
+    __tablename__ = 'def_api_endpoint_roles_v'
+    __table_args__ = {'schema': 'apps'}
+
+    api_endpoint_id = db.Column(db.Integer, primary_key=True)
+    api_endpoint = db.Column(db.Text)
+    method = db.Column(db.Text)
+    assigned_role_count = db.Column(db.Integer)
+    assigned_roles = db.Column(JSONB)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.DateTime)
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime)
+
+    def json(self):
+        return {
+            'api_endpoint_id': self.api_endpoint_id,
+            'api_endpoint': self.api_endpoint,
+            'method': self.method,
+            'assigned_role_count': self.assigned_role_count,
+            'assigned_roles': self.assigned_roles or [],
+            'created_by': self.created_by,
+            'creation_date': self.creation_date,
+            'last_updated_by': self.last_updated_by,
+            'last_update_date': self.last_update_date
+        }
+
+
+
+
 
 class DefUserGrantedRolesPrivilegesV(db.Model):
     __tablename__ = 'def_user_granted_roles_privileges_v'
@@ -1548,7 +1578,6 @@ class DefUserGrantedRolesPrivilegesV(db.Model):
     user_id = db.Column(db.Integer, primary_key=True)
     user_name = db.Column(db.String)
     tenant_id = db.Column(db.Integer)
-
     granted_roles = db.Column(JSONB)
     granted_privileges = db.Column(JSONB)
 

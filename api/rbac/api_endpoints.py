@@ -47,7 +47,10 @@ def create_api_endpoint():
         db.session.add(new_api)
         db.session.commit()
 
-        return make_response(jsonify({'message': 'Added successfully'}), 201)
+        return make_response(jsonify({
+            'message': 'Added successfully',
+            'api_endpoint_id': new_api.api_endpoint_id
+        }), 201)
 
     except Exception as e:
         db.session.rollback()
@@ -114,9 +117,7 @@ def get_api_endpoints():
             "error": str(e),
             "message": "Error fetching API endpoints"
         }), 500)
-
-
-
+    
 @rbac_bp.route('/def_api_endpoints', methods=['PUT'])
 @jwt_required()
 @role_required()
