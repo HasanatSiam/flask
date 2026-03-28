@@ -96,17 +96,26 @@ def create_api_endpoint_role():
 def get_api_endpoint_roles():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
-        role_id = request.args.get("role_id", type=int)
 
-        # If both provided -> single-record lookup
-        if api_endpoint_id is not None and role_id is not None:
+        # Support single and multiple role IDs (e.g., ?role_id=1,2 or ?role_id=1&role_id=2)
+        role_ids_raw = request.args.getlist("role_id")
+        role_ids = []
+        for val in role_ids_raw:
+            for item in val.split(','):
+                item = item.strip()
+                if item.isdigit():
+                    role_ids.append(int(item))
+        role_ids = sorted(list(set(role_ids)))
+
+        # If exactly one endpoint and one role provided -> single-record lookup
+        if api_endpoint_id is not None and len(role_ids) == 1:
             record = DefApiEndpointRole.query.filter_by(
                 api_endpoint_id=api_endpoint_id,
-                role_id=role_id
+                role_id=role_ids[0]
             ).first()
             if not record:
                 return make_response(jsonify({
-                    "error": f"No data found for api_endpoint_id={api_endpoint_id} and role_id={role_id}"
+                    "error": f"No data found for api_endpoint_id={api_endpoint_id} and role_id={role_ids[0]}"
                 }), 404)
             return make_response(jsonify({"result": record.json()}), 200)
 
@@ -116,8 +125,8 @@ def get_api_endpoint_roles():
         # Single ID filters
         if api_endpoint_id is not None:
             query = query.filter(DefApiEndpointRole.api_endpoint_id == api_endpoint_id)
-        if role_id is not None:
-            query = query.filter(DefApiEndpointRole.role_id == role_id)
+        if role_ids:
+            query = query.filter(DefApiEndpointRole.role_id.in_(role_ids))
 
         # Search filter (similar to api_endpoints searching for endpoint name or role name)
         search_term = request.args.get('search_term', '').strip()
