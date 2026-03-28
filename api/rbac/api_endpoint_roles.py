@@ -8,12 +8,62 @@ from utils.auth import role_required
 from executors.models import (
     DefApiEndpoint,
     DefApiEndpointRole,
-    DefRoles
+    DefRoles,
+    DefApiEndpointRolesV,
+    DefRoleApiEndpointsV
 
 )
 
 from . import rbac_bp
 
+
+
+
+
+
+@rbac_bp.route('/def_api_endpoint_roles/by_endpoint', methods=['GET'])
+@jwt_required()
+@role_required()
+def get_api_endpoint_roles_view():
+    try:
+        api_endpoint_id = request.args.get("api_endpoint_id", type=int)
+
+        query = DefApiEndpointRolesV.query
+
+        if api_endpoint_id is not None:
+            query = query.filter(DefApiEndpointRolesV.api_endpoint_id == api_endpoint_id)
+
+        search_term = request.args.get('api_endpoint', '').strip()
+        if search_term:
+            search_underscore = search_term.replace(' ', '_')
+            search_space = search_term.replace('_', ' ')
+            query = query.filter(
+                or_(
+                    DefApiEndpointRolesV.api_endpoint.ilike(f'%{search_term}%'),
+                    DefApiEndpointRolesV.api_endpoint.ilike(f'%{search_underscore}%'),
+                    DefApiEndpointRolesV.api_endpoint.ilike(f'%{search_space}%')
+                )
+            )
+
+        query = query.order_by(DefApiEndpointRolesV.api_endpoint_id.desc())
+
+        records = query.all()
+        result = [r.json() for r in records]
+
+        if api_endpoint_id is not None:
+            if not result:
+                return make_response(jsonify({
+                    "error": f"API endpoint with id={api_endpoint_id} not found"
+                }), 404)
+            return make_response(jsonify({"result": result[0]}), 200)
+
+        return make_response(jsonify({"result": result}), 200)
+
+    except Exception as e:
+        return make_response(jsonify({
+            "error": str(e),
+            "message": "Error fetching API endpoint roles view"
+        }), 500)
 
 
 
