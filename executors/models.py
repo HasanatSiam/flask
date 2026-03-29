@@ -1619,6 +1619,35 @@ class DefForgotPasswordRequest(db.Model):
             "last_update_date":   self.last_update_date.isoformat() if self.last_update_date else None,
         }
 
+
+class DefMobileMenu(db.Model):
+    __tablename__  = 'def_mobile_menu'
+    __table_args__ = {'schema': 'apps'}
+
+    menu_id          = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    menu_code        = db.Column(db.Text, unique=True)
+    menu_name        = db.Column(db.Text)
+    menu_desc        = db.Column(db.Text)
+    menu_structure   = db.Column(JSONB)
+    created_by       = db.Column(db.Integer)
+    creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            'menu_id'         : self.menu_id,
+            'menu_code'       : self.menu_code,
+            'menu_name'       : self.menu_name,
+            'menu_desc'       : self.menu_desc,
+            'menu_structure'  : self.menu_structure,
+            'created_by'      : self.created_by,
+            'creation_date'   : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by' : self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
+        }
+
+
 class InfoSchemaTable(db.Model):
     __tablename__ = 'tables'
     __bind_key__ = 'db_test'
