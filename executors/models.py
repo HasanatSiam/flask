@@ -1367,35 +1367,41 @@ class DefControlEnvironment(db.Model):
 
 class NewUserInvitation(db.Model):
 
-
-    __tablename__ = 'new_user_invitations'
+    __tablename__ = 'def_new_user_invitations'
     __table_args__ = {'schema': 'apps'}
 
-    user_invitation_id    =  db.Column(db.Integer, primary_key=True)      
-    invited_by            =  db.Column(db.Integer)
-    email                 =  db.Column(db.Text)
-    registered_user_id    =  db.Column(db.Integer)
-    type                  =  db.Column(db.String(10)) 
-    token                 =  db.Column(db.Text)    
-    status                =  db.Column(db.String(10)) 
-    created_at            =  db.Column(db.DateTime())
-    accepted_at           =  db.Column(db.DateTime())
-    expires_at            =  db.Column(db.DateTime()) 
+    user_invitation_id =  db.Column(db.Integer, primary_key=True)
+    invited_by         =  db.Column(db.Integer, nullable=False)
+    email              =  db.Column(db.Text)
+    registered_user_id =  db.Column(db.Integer)
+    type               =  db.Column(db.String(10))
+    access_token       =  db.Column(db.Text, nullable=False)
+    status             =  db.Column(db.String(10), default='PENDING')
+    accepted_at        =  db.Column(db.DateTime())
+    expires_at         =  db.Column(db.DateTime())
+    created_by         =  db.Column(db.Integer)
+    creation_date      =  db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated_by    =  db.Column(db.Integer)
+    last_update_date   =  db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def json(self):
         return {
-            "user_invitation_id": self.user_invitation_id,
-            "invited_by": self.invited_by,
-            "email": self.email,
-            "registered_user_id": self.registered_user_id,
-            "type": self.type,
-            "token": self.token,
-            "status": self.status,
-            "created_at": self.created_at,
-            "accepted_at": self.accepted_at, 
-            "expires_at": self.expires_at
+            "user_invitation_id" : self.user_invitation_id,
+            "invited_by"         : self.invited_by,
+            "email"              : self.email,
+            "registered_user_id" : self.registered_user_id,
+            "type"               : self.type,
+            "access_token"       : self.access_token,
+            "status"             : self.status,
+            "accepted_at"        : self.accepted_at.isoformat() if self.accepted_at else None,
+            "expires_at"         : self.expires_at.isoformat() if self.expires_at else None,
+            "created_by"         : self.created_by,
+            "creation_date"      : self.creation_date.isoformat() if self.creation_date else None,
+            "last_updated_by"    : self.last_updated_by,
+            "last_update_date"   : self.last_update_date.isoformat() if self.last_update_date else None,
         }
-    
+
+
 
 #----------------RBAC------------
 

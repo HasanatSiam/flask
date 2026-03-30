@@ -51,8 +51,8 @@ def invitation_via_email():
 
         if existing_invite and existing_invite.expires_at > datetime.utcnow():
             encrypted_id = encrypt(str(existing_invite.user_invitation_id), crypto_secret_key)
-            # existing_invite.token is already encrypted — use it directly, do NOT re-encrypt
-            existing_encrypted_token = existing_invite.token
+            # existing_invite.access_token is already encrypted — use it directly, do NOT re-encrypt
+            existing_encrypted_token = existing_invite.access_token
             invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
             return jsonify({
                 "invitation_id": existing_invite.user_invitation_id,
@@ -69,10 +69,13 @@ def invitation_via_email():
         new_invite = NewUserInvitation(
             invited_by=invited_by,
             email=email,
-            token=encrypted_token,  # store encrypted token in DB
+            access_token=encrypted_token,
             status="PENDING",
             type="EMAIL",
-            created_at=datetime.utcnow(),
+            created_by=int(invited_by),
+            creation_date=datetime.utcnow(),
+            last_updated_by=int(invited_by),
+            last_update_date=datetime.utcnow(),
             expires_at=expires_at
         )
         db.session.add(new_invite)
@@ -138,10 +141,13 @@ def invitation_via_link():
         encrypted_token = encrypt(token, crypto_secret_key)
         new_invite = NewUserInvitation(
             invited_by=invited_by,
-            token=encrypted_token,
+            access_token=encrypted_token,
             status="PENDING",
             type="LINK",
-            created_at=datetime.utcnow(),
+            created_by=int(invited_by),
+            creation_date=datetime.utcnow(),
+            last_updated_by=int(invited_by),
+            last_update_date=datetime.utcnow(),
             expires_at=expires_at
         )
         db.session.add(new_invite)
@@ -185,7 +191,7 @@ def get_invitation_details(encrypted_id):
 
         # Validate the stored token
         try:
-            decrypted_token = decrypt(invite.token, crypto_secret_key)
+            decrypted_token = decrypt(invite.access_token, crypto_secret_key)
             decoded = decode_token(decrypted_token)
         except Exception as e:
             msg = str(e).lower()
@@ -232,7 +238,7 @@ def accept_invitation(encrypted_id):
 
         # Decode JWT token from DB
         try:
-            decrypted_token = decrypt(invite.token, crypto_secret_key)
+            decrypted_token = decrypt(invite.access_token, crypto_secret_key)
             decoded = decode_token(decrypted_token)
         except Exception as e:
             msg = str(e).lower()
@@ -278,8 +284,8 @@ def accept_invitation(encrypted_id):
                 middle_name=data.get("middle_name"),
                 last_name=data.get("last_name"),
                 job_title_id=data.get("job_title_id"),
-                created_by=inviter_id,
-                last_updated_by=inviter_id,
+                created_by=new_user.user_id,
+                last_updated_by=new_user.user_id,
                 creation_date=datetime.utcnow(),
                 last_update_date=datetime.utcnow()
             )
@@ -290,8 +296,8 @@ def accept_invitation(encrypted_id):
         new_cred = DefUserCredential(
             user_id=new_user.user_id,
             password=hashed_password,
-            created_by=inviter_id,
-            last_updated_by=inviter_id,
+            created_by=new_user.user_id,
+            last_updated_by=new_user.user_id,
             creation_date=datetime.utcnow(),
             last_update_date=datetime.utcnow()
         )
@@ -299,8 +305,10 @@ def accept_invitation(encrypted_id):
 
         # Update invitation
         invite.registered_user_id = new_user.user_id
-        invite.status = "ACCEPTED"
-        invite.accepted_at = datetime.utcnow()
+        invite.status             = "ACCEPTED"
+        invite.accepted_at        = datetime.utcnow()
+        invite.last_updated_by    = new_user.user_id
+        invite.last_update_date   = datetime.utcnow()
 
         if data["user_type"].lower() == "person":
             # Add default 'query' privilege
