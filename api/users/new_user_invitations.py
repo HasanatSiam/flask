@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from flask_mail import Message as MailMessage
 
 from utils.auth import encrypt, decrypt
-from config import crypto_secret_key, invitation_expire_time, mail
+from config import crypto_secret_key, invitation_expire_time, mail, REACT_ENDPOINT_URL
 from sqlalchemy import or_
 
 from utils.auth import role_required
@@ -51,11 +51,12 @@ def invitation_via_email():
 
         if existing_invite and existing_invite.expires_at > datetime.utcnow():
             encrypted_id = encrypt(str(existing_invite.user_invitation_id), crypto_secret_key)
-            encrypted_existing_token = encrypt(existing_invite.token, crypto_secret_key)
-            invite_link = f"{request.host_url}invitation/{encrypted_id}/{encrypted_existing_token}"
+            # existing_invite.token is already encrypted — use it directly, do NOT re-encrypt
+            existing_encrypted_token = existing_invite.token
+            invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
             return jsonify({
                 "invitation_id": existing_invite.user_invitation_id,
-                "token": encrypted_existing_token,
+                "token": existing_encrypted_token,
                 "invitation_link": invite_link,
                 "message": "Pending invitation already exists"
             }), 200
@@ -79,19 +80,21 @@ def invitation_via_email():
 
         # Encrypt invitation ID and token for the link
         encrypted_id = encrypt(str(new_invite.user_invitation_id), crypto_secret_key)
-        invite_link = f"{request.host_url}invitations/{encrypted_id}/{encrypted_token}"
+        invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
 
         # Send email
         msg = MailMessage(
             subject="You're Invited to Join PROCG",
             recipients=[email],
             html=f"""
-            <p>Hello,</p>
-            <p>You’ve been invited to join PROCG!</p>
-            <p>Click below to accept your invitation:</p>
-            <p><a href="{invite_link}">Accept Invitation</a></p>
-            <p>This link expires in {invitation_expire_time} minute(s).</p>
-            <p>— The PROCG Team</p>
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; padding: 20px; background: #fff; border-radius: 8px;">
+                    <h2 style="color: #CE7E5A;">You're Invited to Join PROCG!</h2>
+                    <p>Hello,</p>
+                    <p>You've been invited to join the <strong>PROCG</strong> platform. Click the button below to accept your invitation and create your account.</p>
+                    <a href="{invite_link}" style="display: inline-block; padding: 12px 24px; background: #FE6244; color: #fff; text-decoration: none; border-radius: 5px; font-weight: bold;">Accept Invitation</a>
+                    <p style="margin-top: 20px;">Best regards,<br>PROCG Team</p>
+                    <p style="font-size: 12px; color: #999;">This invitation expires in {int(invitation_expire_time.total_seconds() // 3600)} hour(s). If you did not expect this, you can safely ignore this email.</p>
+                </div>
             """
         )
 
@@ -147,7 +150,7 @@ def invitation_via_link():
         db.session.commit()
 
         encrypted_id = encrypt(str(new_invite.user_invitation_id), crypto_secret_key)
-        invite_link = f"{request.host_url}invitations/{encrypted_id}/{encrypted_token}"
+        invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
 
 
         return jsonify({
@@ -163,28 +166,16 @@ def invitation_via_link():
         return jsonify({"error": str(e)}), 500
 
 
-@users_bp.route("/invitations/<string:encrypted_id>/<string:token>", methods=["GET"])
-def get_invitation_details(encrypted_id, token):
+@users_bp.route("/invitations/<string:encrypted_id>", methods=["GET"])
+def get_invitation_details(encrypted_id):
     try:
         try:
             invitation_id = int(decrypt(encrypted_id, crypto_secret_key))
-            decrypted_token = decrypt(token, crypto_secret_key)
         except Exception:
             return jsonify({"valid": False, "message": "Invalid invitation link"}), 400
 
-        try:
-            decoded = decode_token(decrypted_token)
-            invited_by = decoded.get("sub")
-        except Exception as e:
-            msg = str(e).lower()
-            if "expired" in msg:
-                return jsonify({"valid": False, "message": "Token expired"}), 401
-            return jsonify({"valid": False, "message": "Invalid token"}), 403
-
         invite = NewUserInvitation.query.filter_by(
-            user_invitation_id=invitation_id,
-            invited_by=invited_by,
-            token=token
+            user_invitation_id=invitation_id
         ).first()
 
         if not invite:
@@ -194,6 +185,16 @@ def get_invitation_details(encrypted_id, token):
             invite.status = "EXPIRED"
             db.session.commit()
             return jsonify({"valid": False, "message": "Invitation expired"}), 200
+
+        # Validate the stored token
+        try:
+            decrypted_token = decrypt(invite.token, crypto_secret_key)
+            decoded = decode_token(decrypted_token)
+        except Exception as e:
+            msg = str(e).lower()
+            if "expired" in msg:
+                return jsonify({"valid": False, "message": "Token expired"}), 401
+            return jsonify({"valid": False, "message": "Invalid token"}), 403
 
         return jsonify({
             "valid": True,
@@ -206,13 +207,12 @@ def get_invitation_details(encrypted_id, token):
     except Exception as e:
         return jsonify({"valid": False, "message": str(e)}), 500
 
-@users_bp.route("/invitations/accept/<encrypted_id>/<token>", methods=["POST"])
-def accept_invitation(encrypted_id, token):
+@users_bp.route("/invitations/accept/<encrypted_id>", methods=["POST"])
+def accept_invitation(encrypted_id):
     try:
-        # Decrypt invitation ID and Token
+        # Decrypt invitation ID
         try:
             user_invitation_id = int(decrypt(encrypted_id, crypto_secret_key))
-            decrypted_token = decrypt(token, crypto_secret_key)
         except Exception:
             return jsonify({"message": "Invalid or corrupted invitation link"}), 400
 
@@ -222,8 +222,20 @@ def accept_invitation(encrypted_id, token):
         if missing:
             return jsonify({"message": f"Missing required fields: {', '.join(missing)}"}), 400
 
-        # Decode JWT token
+        # Fetch invite from DB and get token from there
+        invite = NewUserInvitation.query.filter_by(
+            user_invitation_id=user_invitation_id
+        ).first()
+
+        if not invite or invite.status in ["ACCEPTED", "EXPIRED"] or (invite.expires_at and invite.expires_at < datetime.utcnow()):
+            if invite:
+                invite.status = "EXPIRED"
+                db.session.commit()
+            return jsonify({"message": "This invitation is not valid"}), 400
+
+        # Decode JWT token from DB
         try:
+            decrypted_token = decrypt(invite.token, crypto_secret_key)
             decoded = decode_token(decrypted_token)
         except Exception as e:
             msg = str(e).lower()
@@ -234,19 +246,6 @@ def accept_invitation(encrypted_id, token):
         inviter_id = decoded.get("sub")
         if not inviter_id:
             return jsonify({"message": "Missing inviter info in token"}), 403
-
-        # Check invitation
-        invite = NewUserInvitation.query.filter_by(
-            user_invitation_id=user_invitation_id,
-            invited_by=inviter_id,
-            token=token
-        ).first()
-
-        if not invite or invite.status in ["ACCEPTED", "EXPIRED"] or (invite.expires_at and invite.expires_at < datetime.utcnow()):
-            if invite:
-                invite.status = "EXPIRED"
-                db.session.commit()
-            return jsonify({"message": "This invitation is not valid"}), 400
 
         # Check existing username/email
         if DefUser.query.filter_by(user_name=data["user_name"]).first():
