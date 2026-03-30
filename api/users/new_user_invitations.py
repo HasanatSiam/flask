@@ -108,8 +108,6 @@ def invitation_via_email():
 
         return jsonify({
             "success": True,
-            "invitation_id": new_invite.user_invitation_id,
-            "token": encrypted_token,
             "encrypted_id": encrypted_id,
             "invitation_link": invite_link,
             "message": "Invitation email sent successfully"
@@ -157,7 +155,6 @@ def invitation_via_link():
             "success": True,
             "invitation_link": invite_link,
             "encrypted_id": encrypted_id,
-            "token": encrypted_token,
             "message": "The invitation link was generated successfully"
         }), 201
 

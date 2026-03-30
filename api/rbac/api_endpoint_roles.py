@@ -46,17 +46,29 @@ def get_api_endpoint_roles_view():
 
         query = query.order_by(DefApiEndpointRolesV.api_endpoint_id.desc())
 
-        records = query.all()
-        result = [r.json() for r in records]
-
+        # Single record lookup by endpoint ID (no pagination needed)
         if api_endpoint_id is not None:
-            if not result:
+            record = query.first()
+            if not record:
                 return make_response(jsonify({
                     "error": f"API endpoint with id={api_endpoint_id} not found"
                 }), 404)
-            return make_response(jsonify({"result": result[0]}), 200)
+            return make_response(jsonify({"result": record.json()}), 200)
 
-        return make_response(jsonify({"result": result}), 200)
+        # Pagination
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [r.json() for r in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
+        return make_response(jsonify({"result": [r.json() for r in query.all()]}), 200)
 
     except Exception as e:
         return make_response(jsonify({
