@@ -6,7 +6,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from executors.extensions import db
 from utils.auth import role_required
 from executors.models import(DefUser, 
-                             DefPerson, DefUsersView, DefUserCredential, DefAccessProfile, NewUserInvitation,
+                             DefPerson, DefUsersView, DefUserCredential, DefAccessProfile, DefNewUserInvitation,
                              DefPrivilege, DefUserGrantedPrivilege,
                              DefRoles, DefUserGrantedRole)
 from . import users_bp
@@ -111,7 +111,7 @@ def register_user():
         db.session.add(new_cred)
 
         if user_invitation_id:  
-            user_invitation = NewUserInvitation.query.filter_by(user_invitation_id=user_invitation_id).first()
+            user_invitation = DefNewUserInvitation.query.filter_by(user_invitation_id=user_invitation_id).first()
             if user_invitation:
 
                 user_invitation.registered_user_id = new_user.user_id

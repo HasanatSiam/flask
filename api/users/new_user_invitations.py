@@ -13,15 +13,17 @@ from executors.extensions import db
 from executors.models import(DefUser,
                              DefPerson,
                              DefUserCredential,
-                             NewUserInvitation,
+                             DefNewUserInvitation,
                              DefPrivilege,
                              DefUserGrantedPrivilege,
                              DefRoles,
-                             DefUserGrantedRole)
+                             DefUserGrantedRole,
+                             DefJobTitle,
+                             DefTenant)
 
 from . import users_bp
 
-@users_bp.route("/invitations/via_email", methods=["POST"])
+@users_bp.route("/invitation/via_email", methods=["POST"])
 @jwt_required()
 @role_required()
 def invitation_via_email():
@@ -41,11 +43,12 @@ def invitation_via_email():
 
         # Token expiration and generation
         expires = invitation_expire_time
-        token = create_access_token(identity=str(invited_by), expires_delta=expires)
+        additional_claims = {"isLoggedIn": True, "user_id": int(invited_by)}
+        token = create_access_token(identity=str(invited_by), expires_delta=expires, additional_claims=additional_claims)
         encrypted_token = encrypt(token, crypto_secret_key)
 
         # Check for existing pending invite
-        existing_invite = NewUserInvitation.query.filter_by(
+        existing_invite = DefNewUserInvitation.query.filter_by(
             email=email, status="PENDING", type="EMAIL"
         ).first()
 
@@ -53,7 +56,7 @@ def invitation_via_email():
             encrypted_id = encrypt(str(existing_invite.user_invitation_id), crypto_secret_key)
             # existing_invite.access_token is already encrypted — use it directly, do NOT re-encrypt
             existing_encrypted_token = existing_invite.access_token
-            invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
+            invite_link = f"{REACT_ENDPOINT_URL}/invitation/{encrypted_id}"
             return jsonify({
                 "invitation_id": existing_invite.user_invitation_id,
                 "token": existing_encrypted_token,
@@ -66,7 +69,7 @@ def invitation_via_email():
 
         # Create new invitation
         expires_at = datetime.utcnow() + expires
-        new_invite = NewUserInvitation(
+        new_invite = DefNewUserInvitation(
             invited_by=invited_by,
             email=email,
             access_token=encrypted_token,
@@ -83,7 +86,7 @@ def invitation_via_email():
 
         # Encrypt invitation ID and token for the link
         encrypted_id = encrypt(str(new_invite.user_invitation_id), crypto_secret_key)
-        invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
+        invite_link = f"{REACT_ENDPOINT_URL}/invitation/{encrypted_id}"
 
         # Send email
         msg = MailMessage(
@@ -122,7 +125,7 @@ def invitation_via_email():
 
 
 
-@users_bp.route("/invitations/via_link", methods=["POST"])
+@users_bp.route("/invitation/via_link", methods=["POST"])
 @jwt_required()
 @role_required()
 def invitation_via_link():
@@ -135,11 +138,12 @@ def invitation_via_link():
             return jsonify({"error": "Inviter ID required"}), 400
 
         expires = invitation_expire_time
-        token = create_access_token(identity=str(invited_by), expires_delta=expires)
+        additional_claims = {"isLoggedIn": True, "user_id": int(invited_by)}
+        token = create_access_token(identity=str(invited_by), expires_delta=expires, additional_claims=additional_claims)
         expires_at = datetime.utcnow() + expires
 
         encrypted_token = encrypt(token, crypto_secret_key)
-        new_invite = NewUserInvitation(
+        new_invite = DefNewUserInvitation(
             invited_by=invited_by,
             access_token=encrypted_token,
             status="PENDING",
@@ -154,7 +158,7 @@ def invitation_via_link():
         db.session.commit()
 
         encrypted_id = encrypt(str(new_invite.user_invitation_id), crypto_secret_key)
-        invite_link = f"{REACT_ENDPOINT_URL}/invitations/{encrypted_id}"
+        invite_link = f"{REACT_ENDPOINT_URL}/invitation/{encrypted_id}"
 
 
         return jsonify({
@@ -169,7 +173,7 @@ def invitation_via_link():
         return jsonify({"error": str(e)}), 500
 
 
-@users_bp.route("/invitations/<string:encrypted_id>", methods=["GET"])
+@users_bp.route("/invitation/<string:encrypted_id>", methods=["GET"])
 def get_invitation_details(encrypted_id):
     try:
         try:
@@ -177,7 +181,7 @@ def get_invitation_details(encrypted_id):
         except Exception:
             return jsonify({"valid": False, "message": "Invalid invitation link"}), 400
 
-        invite = NewUserInvitation.query.filter_by(
+        invite = DefNewUserInvitation.query.filter_by(
             user_invitation_id=invitation_id
         ).first()
 
@@ -199,18 +203,37 @@ def get_invitation_details(encrypted_id):
                 return jsonify({"valid": False, "message": "Token expired"}), 401
             return jsonify({"valid": False, "message": "Invalid token"}), 403
 
+        inviter_id = decoded.get("user_id") or decoded.get("sub")
+        inviter = DefUser.query.get(inviter_id)
+        
+        tenant_id = None
+        tenant_name = None
+        job_titles = []
+        
+        if inviter:
+            tenant_id = inviter.tenant_id
+            tenant = DefTenant.query.get(tenant_id)
+            if tenant:
+                tenant_name = tenant.tenant_name
+            
+            job_titles_query = DefJobTitle.query.filter_by(tenant_id=tenant_id).all()
+            job_titles = [{"job_title_id": jt.job_title_id, "job_title_name": jt.job_title_name} for jt in job_titles_query]
+
         return jsonify({
             "valid": True,
             "invited_by": invite.invited_by,
             "email": invite.email,
             "type": invite.type,
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_name,
+            "job_titles": job_titles,
             "message": "Invitation link is valid"
         }), 200
 
     except Exception as e:
         return jsonify({"valid": False, "message": str(e)}), 500
 
-@users_bp.route("/invitations/accept/<encrypted_id>", methods=["POST"])
+@users_bp.route("/invitation/accept/<encrypted_id>", methods=["POST"])
 def accept_invitation(encrypted_id):
     try:
         # Decrypt invitation ID
@@ -220,13 +243,13 @@ def accept_invitation(encrypted_id):
             return jsonify({"message": "Invalid or corrupted invitation link"}), 400
 
         data = request.get_json() or {}
-        required_fields = ["user_name", "user_type", "email_address", "tenant_id", "password"]
+        required_fields = ["user_name", "user_type", "email_address", "password"]
         missing = [f for f in required_fields if not data.get(f)]
         if missing:
             return jsonify({"message": f"Missing required fields: {', '.join(missing)}"}), 400
 
         # Fetch invite from DB and get token from there
-        invite = NewUserInvitation.query.filter_by(
+        invite = DefNewUserInvitation.query.filter_by(
             user_invitation_id=user_invitation_id
         ).first()
 
@@ -246,9 +269,15 @@ def accept_invitation(encrypted_id):
                 return jsonify({"message": "Token has expired"}), 401
             return jsonify({"message": "Invalid token"}), 403
 
-        inviter_id = decoded.get("sub")
+        inviter_id = decoded.get("user_id") or decoded.get("sub")
         if not inviter_id:
             return jsonify({"message": "Missing inviter info in token"}), 403
+
+        inviter = DefUser.query.get(inviter_id)
+        if not inviter:
+            return jsonify({"message": "Inviter user not found"}), 404
+        
+        tenant_id = inviter.tenant_id
 
         # Check existing username/email
         if DefUser.query.filter_by(user_name=data["user_name"]).first():
@@ -261,7 +290,7 @@ def accept_invitation(encrypted_id):
             user_name=data["user_name"],
             user_type=data["user_type"],
             email_address=data["email_address"],
-            tenant_id=data["tenant_id"],
+            tenant_id=tenant_id,
             date_of_birth=data.get("date_of_birth"),
             created_by=inviter_id,
             last_updated_by=inviter_id,
