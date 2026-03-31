@@ -1365,7 +1365,7 @@ class DefControlEnvironment(db.Model):
         }
     
 
-class NewUserInvitation(db.Model):
+class DefNewUserInvitation(db.Model):
 
     __tablename__ = 'def_new_user_invitations'
     __table_args__ = {'schema': 'apps'}
