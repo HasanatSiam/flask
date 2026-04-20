@@ -116,6 +116,14 @@ def create_app() -> Flask:
             # },
             timezone             = "UTC",
             enable_utc           = True,
+
+            # ── Auto-scheduled tasks (no manual registration needed) ──────────
+            beat_schedule        = {
+                "webhook-retry-every-minute": {
+                    "task"    : "redbeat_s.tasks.retry_webhooks_task",
+                    "schedule": 60,   # seconds
+                },
+            },
         ),
 
         # ── JWT
