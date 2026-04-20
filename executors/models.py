@@ -45,13 +45,14 @@ class DefTenant(db.Model):
     last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def json(self):
-        return {'tenant_id'  : self.tenant_id,
-                'tenant_name': self.tenant_name,
-                'created_by'    : self.created_by,
-                'creation_date' : self.creation_date,
-                'last_updated_by': self.last_updated_by,
-                'last_update_date': self.last_update_date
-           }
+        return {
+            'tenant_id'       : self.tenant_id,
+            'tenant_name'     : self.tenant_name,
+            'created_by'      : self.created_by,
+            'creation_date'   : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by' : self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None,
+        }
 
 
 class DefTenantEnterpriseSetupV(db.Model):
@@ -132,9 +133,9 @@ class DefUser(db.Model):
             'user_type'         : self.user_type,
             'email_address'     : self.email_address,
             'created_by'        : self.created_by,
-            'creation_date'     : self.creation_date,
+            'creation_date'     : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'   : self.last_updated_by,
-            'last_update_date'  : self.last_update_date,
+            'last_update_date'  : self.last_update_date.isoformat() if self.last_update_date else None,
             'tenant_id'         : self.tenant_id,
             'user_invitation_id': self.user_invitation_id,
             'date_of_birth'     : self.date_of_birth.isoformat() if self.date_of_birth else None,
@@ -1654,6 +1655,7 @@ class DefMobileMenu(db.Model):
         }
 
 
+
 class InfoSchemaTable(db.Model):
     __tablename__ = 'tables'
     __bind_key__ = 'db_test'
@@ -1697,3 +1699,96 @@ class InfoSchemaColumn(db.Model):
             'is_nullable': self.is_nullable,
             'data_type': self.data_type
         }
+
+
+# ── Webhook Models ────────────────────────────────────────────────────────────
+
+class DefWebhook(db.Model):
+    __tablename__  = 'def_webhooks'
+    __table_args__ = {'schema': 'apps'}
+
+    webhook_id       = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
+    # User-defined label, e.g. "ServiceNow Incident Sync"
+    webhook_name     = db.Column(db.String(255), nullable=False)
+    webhook_url      = db.Column(db.Text, nullable=False)
+    # The table this webhook listens to, e.g. "def_controls" — required for matching
+    table_name       = db.Column(db.String(64), nullable=False)
+    # JSONB array of HTTP methods that trigger this webhook, e.g. ["POST", "PUT"]
+    http_methods     = db.Column(JSONB, nullable=False, default=list)
+    secret_key       = db.Column(db.String(128))
+    extra_headers    = db.Column(JSONB)
+    filters          = db.Column(JSONB)
+    selected_columns = db.Column(JSONB)
+    is_active        = db.Column(db.String(1), nullable=False, default='Y')
+    failure_count    = db.Column(db.Integer, nullable=False, default=0)
+    max_retries      = db.Column(db.Integer, nullable=False, default=5)
+    created_by       = db.Column(db.Integer, nullable=False)
+    creation_date    = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime)
+
+    def json(self):
+        return {
+            'webhook_id'      : self.webhook_id,
+            'tenant_id'       : self.tenant_id,
+            'webhook_name'    : self.webhook_name,
+            'webhook_url'     : self.webhook_url,
+            'table_name'      : self.table_name,
+            'http_methods'    : self.http_methods,
+            'secret_key'      : self.secret_key,
+            'extra_headers'   : self.extra_headers,
+            'filters'         : self.filters,
+            'selected_columns': self.selected_columns,
+            'is_active'       : self.is_active,
+            'failure_count'   : self.failure_count,
+            'max_retries'     : self.max_retries,
+            'created_by'      : self.created_by,
+            'creation_date'   : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by' : self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None,
+        }
+
+
+class LogWebhookDelivery(db.Model):
+    __tablename__  = 'log_webhook_deliveries'
+    __table_args__ = {'schema': 'apps'}
+
+    delivery_id      = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    webhook_id       = db.Column(db.Integer, db.ForeignKey('apps.def_webhooks.webhook_id'), nullable=False)
+    tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
+    # Which table triggered this delivery, copied from def_webhooks.table_name
+    table_name       = db.Column(db.String(64), nullable=False)
+    # The automatic event identity, e.g. "def_controls.post"
+    event_name       = db.Column(db.String(128), nullable=False)
+    # The HTTP method that actually fired this delivery: POST / PUT / DELETE / GET
+    trigger_method   = db.Column(db.String(10), nullable=False)
+    payload          = db.Column(JSONB, nullable=False)
+    attempt_number   = db.Column(db.SmallInteger, nullable=False, default=1)
+    delivery_status  = db.Column(db.String(20), nullable=False, default='PENDING')
+    http_status_code = db.Column(db.SmallInteger)
+    response_body    = db.Column(db.Text)
+    error_message    = db.Column(db.Text)
+    duration_ms      = db.Column(db.Integer)
+    next_retry_date  = db.Column(db.DateTime)
+    creation_date    = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def json(self):
+        return {
+            'delivery_id'      : self.delivery_id,
+            'webhook_id'       : self.webhook_id,
+            'tenant_id'        : self.tenant_id,
+            'table_name'       : self.table_name,
+            'event_name'       : self.event_name,
+            'trigger_method'   : self.trigger_method,
+            'payload'          : self.payload,
+            'attempt_number'   : self.attempt_number,
+            'delivery_status'  : self.delivery_status,
+            'http_status_code' : self.http_status_code,
+            'response_body'    : self.response_body,
+            'error_message'    : self.error_message,
+            'duration_ms'      : self.duration_ms,
+            'next_retry_date'  : self.next_retry_date.isoformat() if self.next_retry_date else None,
+            'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
+        }
+

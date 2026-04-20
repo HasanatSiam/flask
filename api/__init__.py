@@ -14,6 +14,7 @@ from .data_modeling import data_modeling_bp
 from .workflow import workflow_bp
 from .dashboard import dashboard_bp
 from .mobile_menu import mobile_menu_bp
+from .webhooks import webhooks_bp
 
 def register_blueprints(app):
     app.register_blueprint(users_bp)
@@ -31,4 +32,5 @@ def register_blueprints(app):
     app.register_blueprint(workflow_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(mobile_menu_bp)
+    app.register_blueprint(webhooks_bp)
 
