@@ -9,7 +9,7 @@ from executors.models import DefWebhook
 from . import webhooks_bp
 
 
-# ── GET /def_webhooks ────────────────────────────────────────────────────────
+
 
 @webhooks_bp.route('/def_webhooks', methods=['GET'])
 @jwt_required()
@@ -62,7 +62,6 @@ def get_def_webhooks():
         return make_response(jsonify({'message': 'Error fetching webhooks', 'error': str(e)}), 500)
 
 
-# ── POST /def_webhooks ───────────────────────────────────────────────────────
 
 @webhooks_bp.route('/def_webhooks', methods=['POST'])
 @jwt_required()
@@ -97,14 +96,14 @@ def create_webhook():
         )
         db.session.add(new_webhook)
         db.session.commit()
-        return make_response(jsonify({'message': 'Webhook created successfully', 'result': new_webhook.json()}), 201)
+        return make_response(jsonify({'message': 'Added successfully', 'result': new_webhook.json()}), 201)
 
     except Exception as e:
         db.session.rollback()
-        return make_response(jsonify({'message': 'Error creating webhook', 'error': str(e)}), 500)
+        return make_response(jsonify({'message': 'Error adding webhook', 'error': str(e)}), 500)
 
 
-# ── PUT /def_webhooks ────────────────────────────────────────────────────────
+
 
 @webhooks_bp.route('/def_webhooks', methods=['PUT'])
 @jwt_required()
@@ -134,39 +133,46 @@ def update_webhook():
         webhook.last_update_date  = datetime.utcnow()
 
         db.session.commit()
-        return make_response(jsonify({'message': 'Webhook updated successfully'}), 200)
+        return make_response(jsonify({'message': 'Edited successfully'}), 200)
 
     except Exception as e:
         db.session.rollback()
-        return make_response(jsonify({'message': 'Error updating webhook', 'error': str(e)}), 500)
+        return make_response(jsonify({'message': 'Error editing webhook', 'error': str(e)}), 500)
 
 
-# ── DELETE /def_webhooks ─────────────────────────────────────────────────────
+
 
 @webhooks_bp.route('/def_webhooks', methods=['DELETE'])
 @jwt_required()
 @role_required()
 def delete_webhook():
     try:
-        webhook_id = request.args.get('webhook_id', type=int)
-        if not webhook_id:
-            return make_response(jsonify({'message': 'webhook_id is required'}), 400)
+        data = request.get_json()
+        if not data or 'webhook_ids' not in data:
+            return make_response(jsonify({'message': 'webhook_ids (list) is required in the payload'}), 400)
 
-        webhook = DefWebhook.query.filter_by(webhook_id=webhook_id).first()
-        if not webhook:
-            return make_response(jsonify({'message': 'Webhook not found'}), 404)
+        webhook_ids = data.get('webhook_ids')
+        if not isinstance(webhook_ids, list) or not webhook_ids:
+            return make_response(jsonify({'message': 'webhook_ids must be a non-empty list'}), 400)
 
-        db.session.delete(webhook)
+        # Delete webhooks
+        # Use a loop to allow SQLAlchemy to handle any session-level cascades if defined
+        webhooks = DefWebhook.query.filter(DefWebhook.webhook_id.in_(webhook_ids)).all()
+        
+        if not webhooks:
+            return make_response(jsonify({'message': 'No webhooks found for the provided IDs'}), 404)
+
+        for webhook in webhooks:
+            db.session.delete(webhook)
+
         db.session.commit()
-        return make_response(jsonify({'message': 'Webhook deleted successfully'}), 200)
+        return make_response(jsonify({'message': f'{len(webhooks)} webhook(s) deleted successfully'}), 200)
 
     except Exception as e:
         db.session.rollback()
-        return make_response(jsonify({'message': 'Error deleting webhook', 'error': str(e)}), 500)
+        return make_response(jsonify({'message': 'Error deleting webhooks', 'error': str(e)}), 500)
 
 
-# ── PATCH /def_webhooks/toggle ───────────────────────────────────────────────
-# Quickly activate or deactivate a webhook
 
 @webhooks_bp.route('/def_webhooks/toggle', methods=['PATCH'])
 @jwt_required()
