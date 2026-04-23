@@ -4,7 +4,7 @@ from datetime import datetime
 
 from utils.auth import role_required
 from executors.extensions import db
-from executors.models import DefWebhook
+from executors.models import DefWebhook, LogWebhookDelivery
 
 from . import webhooks_bp
 
@@ -155,18 +155,29 @@ def delete_webhook():
         if not isinstance(webhook_ids, list) or not webhook_ids:
             return make_response(jsonify({'message': 'webhook_ids must be a non-empty list'}), 400)
 
-        # Delete webhooks
-        # Use a loop to allow SQLAlchemy to handle any session-level cascades if defined
         webhooks = DefWebhook.query.filter(DefWebhook.webhook_id.in_(webhook_ids)).all()
         
         if not webhooks:
             return make_response(jsonify({'message': 'No webhooks found for the provided IDs'}), 404)
 
-        for webhook in webhooks:
-            db.session.delete(webhook)
+        existing_ids = [w.webhook_id for w in webhooks]
+
+        # Hard delete all dependent delivery history first (FK-safe).
+        deleted_deliveries = LogWebhookDelivery.query.filter(
+            LogWebhookDelivery.webhook_id.in_(existing_ids)
+        ).delete(synchronize_session=False)
+
+        # Then delete webhook definitions.
+        deleted_webhooks = DefWebhook.query.filter(
+            DefWebhook.webhook_id.in_(existing_ids)
+        ).delete(synchronize_session=False)
 
         db.session.commit()
-        return make_response(jsonify({'message': f'{len(webhooks)} webhook(s) deleted successfully'}), 200)
+        return make_response(jsonify({
+            'message': 'Webhook(s) and related delivery logs deleted successfully',
+            'deleted_webhooks': deleted_webhooks,
+            'deleted_deliveries': deleted_deliveries
+        }), 200)
 
     except Exception as e:
         db.session.rollback()
