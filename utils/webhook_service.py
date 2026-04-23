@@ -27,6 +27,8 @@ from flask import g
 from flask_sqlalchemy.track_modifications import models_committed
 from flask_jwt_extended import get_jwt_identity
 from flask import has_request_context
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm.attributes import NO_VALUE
 from executors.models import DefUser
 from sqlalchemy.orm import sessionmaker
 
@@ -37,15 +39,16 @@ logger = logging.getLogger(__name__)
 
 # ── Backoff schedule (seconds) per attempt number ────────────────────────────
 RETRY_DELAYS = {
-    1: 60,        # retry 1 → 1 min
-    2: 300,       # retry 2 → 5 min
-    3: 900,       # retry 3 → 15 min
-    4: 1800,      # retry 4 → 30 min
-    5: 3600,      # retry 5 → 1 hr
+    1: 60,  # retry 1 → 1 min
+    2: 300,  # retry 2 → 5 min
+    3: 900,  # retry 3 → 15 min
+    4: 1800,  # retry 4 → 30 min
+    5: 3600,  # retry 5 → 1 hr
 }
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _sign_payload(secret_key: str, body: bytes) -> str:
     """Return HMAC-SHA256 hex digest signature for the raw payload bytes."""
@@ -69,7 +72,9 @@ def _shape_data(data: dict, selected_columns: list | None) -> dict:
     return {k: v for k, v in data.items() if k in selected_columns}
 
 
-def _dispatch(webhook: DefWebhook, delivery: LogWebhookDelivery, payload_bytes: bytes) -> None:
+def _dispatch(
+    webhook: DefWebhook, delivery: LogWebhookDelivery, payload_bytes: bytes
+) -> None:
     """Perform the actual HTTP call."""
     headers = {"Content-Type": "application/json"}
     if webhook.extra_headers:
@@ -90,22 +95,23 @@ def _dispatch(webhook: DefWebhook, delivery: LogWebhookDelivery, payload_bytes: 
         duration_ms = int((time.time() - start) * 1000)
 
         delivery.http_status_code = response.status_code
-        delivery.response_body    = response.text[:4000]
-        delivery.duration_ms      = duration_ms
+        delivery.response_body = response.text[:4000]
+        delivery.duration_ms = duration_ms
 
         if 200 <= response.status_code < 300:
             delivery.delivery_status = "DELIVERED"
         else:
             delivery.delivery_status = "FAILED"
-            delivery.error_message   = f"HTTP {response.status_code}"
+            delivery.error_message = f"HTTP {response.status_code}"
 
     except Exception as exc:
         delivery.delivery_status = "FAILED"
-        delivery.error_message   = str(exc)[:500]
-        delivery.duration_ms     = int((time.time() - start) * 1000)
+        delivery.error_message = str(exc)[:500]
+        delivery.duration_ms = int((time.time() - start) * 1000)
 
 
 # ── Database Listener ─────────────────────────────────────────────────────────
+
 
 def init_webhook_listener(app):
     """Initialize the global database signal listener."""
@@ -119,7 +125,7 @@ def handle_models_committed(sender, changes):
     actor_tenant_id = None
     if has_request_context():
         # First check 'g' (cached)
-        if hasattr(g, 'actor_tenant_id'):
+        if hasattr(g, "actor_tenant_id"):
             actor_tenant_id = g.actor_tenant_id
         else:
             # Fallback: check JWT claims if we added it there, or query DB
@@ -132,7 +138,7 @@ def handle_models_committed(sender, changes):
                     user = temp_session.query(DefUser).get(int(user_id))
                     if user:
                         actor_tenant_id = user.tenant_id
-                        g.actor_tenant_id = actor_tenant_id # Cache for this request
+                        g.actor_tenant_id = actor_tenant_id  # Cache for this request
                 finally:
                     temp_session.close()
 
@@ -141,33 +147,34 @@ def handle_models_committed(sender, changes):
         if isinstance(instance, (DefWebhook, LogWebhookDelivery)):
             continue
 
-        table_name = getattr(instance, '__tablename__', None)
+        table_name = getattr(instance, "__tablename__", None)
         if not table_name:
             continue
 
-        method_map = {'insert': 'POST', 'update': 'PUT', 'delete': 'DELETE'}
+        method_map = {"insert": "POST", "update": "PUT", "delete": "DELETE"}
         method = method_map.get(operation)
         if not method:
             continue
 
+        # Build payload from already-loaded column values only.
+        # In a models_committed callback, emitting SQL on the same session can fail.
+        full_data = _safe_instance_payload(instance)
+        if not full_data:
+            continue
+
         # Collect potential interested tenants
         interested_tenants = set()
-        
+
         # 1. The tenant the record belongs to
-        record_tenant_id = getattr(instance, 'tenant_id', None)
+        record_tenant_id = full_data.get("tenant_id")
         if record_tenant_id:
             interested_tenants.add(record_tenant_id)
-            
+
         # 2. The tenant who performed the action (The Actor)
         if actor_tenant_id:
             interested_tenants.add(actor_tenant_id)
 
         if not interested_tenants:
-            continue
-
-        # Get the full record data
-        full_data = instance.json() if hasattr(instance, 'json') else {}
-        if not full_data:
             continue
 
         # Fire the webhook for each interested tenant
@@ -176,13 +183,39 @@ def handle_models_committed(sender, changes):
             table_name=table_name,
             method=method,
             tenant_ids=list(interested_tenants),
-            payload=full_data
+            payload=full_data,
         )
+
+
+def _safe_instance_payload(instance) -> dict:
+    """
+    Return a dict of loaded column values without triggering lazy loads.
+    This is safe to call from SQLAlchemy commit signals.
+    """
+    try:
+        state = sa_inspect(instance)
+        payload = {}
+
+        for attr in state.mapper.column_attrs:
+            attr_state = state.attrs.get(attr.key)
+            if attr_state is None:
+                continue
+            value = attr_state.loaded_value
+            if value is NO_VALUE:
+                continue
+            payload[attr.key] = value
+
+        return payload
+    except Exception:
+        return {}
 
 
 # ── Core Logic ────────────────────────────────────────────────────────────────
 
-def fire(table_name: str, method: str, tenant_ids: list[int], payload: dict) -> list[int]:
+
+def fire(
+    table_name: str, method: str, tenant_ids: list[int], payload: dict
+) -> list[int]:
     """
     Find matching webhooks and dispatch them.
     Can accept a single tenant_id (int) or a list of tenant_ids.
@@ -196,67 +229,84 @@ def fire(table_name: str, method: str, tenant_ids: list[int], payload: dict) -> 
     delivery_ids = []
     try:
         # Find matching webhooks: matching table, any of the tenant IDs, and method exists in array
-        webhooks = local_session.query(DefWebhook).filter(
-            DefWebhook.tenant_id.in_(tenant_ids),
-            DefWebhook.table_name == table_name,
-            DefWebhook.http_methods.contains([method]),
-            DefWebhook.is_active == 'Y'
-        ).all()
+        webhooks = (
+            local_session.query(DefWebhook)
+            .filter(
+                DefWebhook.tenant_id.in_(tenant_ids),
+                DefWebhook.table_name == table_name,
+                DefWebhook.http_methods.contains([method]),
+                DefWebhook.is_active == "Y",
+            )
+            .all()
+        )
 
         if not webhooks:
             return delivery_ids
 
         for webhook in webhooks:
-            # 1. Apply Filters
-            if not _apply_filters(webhook.filters, payload):
-                continue
+            # Use separate session per webhook to avoid transaction state conflicts
+            webhook_session = Session()
+            try:
+                # 1. Apply Filters
+                if not _apply_filters(webhook.filters, payload):
+                    webhook_session.close()
+                    continue
 
-            # 2. Shape Payload (Column Selection)
-            shaped_data = _shape_data(payload, webhook.selected_columns)
+                # 2. Shape Payload (Column Selection)
+                shaped_data = _shape_data(payload, webhook.selected_columns)
 
-            # 3. Create Standard Event Wrapper
-            event_payload = {
-                "event": f"{table_name}.{method.lower()}",
-                "table": table_name,
-                "occurred_at": datetime.utcnow().isoformat() + "Z",
-                "webhook_name": webhook.webhook_name,
-                "data": shaped_data
-            }
-            # Ensure the structure is JSON-serializable (converts datetimes to strings etc.)
-            event_payload = json.loads(json.dumps(event_payload, default=str)) 
-            payload_bytes = json.dumps(event_payload).encode("utf-8")
+                # 3. Create Standard Event Wrapper
+                event_payload = {
+                    "event": f"{table_name}.{method.lower()}",
+                    "table": table_name,
+                    "occurred_at": datetime.utcnow().isoformat() + "Z",
+                    "webhook_name": webhook.webhook_name,
+                    "data": shaped_data,
+                }
+                # Ensure the structure is JSON-serializable (converts datetimes to strings etc.)
+                event_payload = json.loads(json.dumps(event_payload, default=str))
+                payload_bytes = json.dumps(event_payload).encode("utf-8")
 
-            # 4. Create Delivery Log
-            delivery = LogWebhookDelivery(
-                webhook_id      = webhook.webhook_id,
-                tenant_id       = webhook.tenant_id,  # Use the webhook's owner tenant ID
-                event_name      = event_payload["event"],
-                table_name      = table_name,
-                trigger_method  = method,
-                payload         = event_payload,
-                attempt_number  = 1,
-                delivery_status = "PENDING",
-                creation_date   = datetime.utcnow(),
-            )
-            local_session.add(delivery)
-            local_session.flush()
+                # 4. Create Delivery Log
+                delivery = LogWebhookDelivery(
+                    webhook_id=webhook.webhook_id,
+                    tenant_id=webhook.tenant_id,  # Use the webhook's owner tenant ID
+                    event_name=event_payload["event"],
+                    table_name=table_name,
+                    trigger_method=method,
+                    payload=event_payload,
+                    attempt_number=1,
+                    delivery_status="PENDING",
+                    creation_date=datetime.utcnow(),
+                )
+                webhook_session.add(delivery)
+                webhook_session.flush()
 
-            # 5. Dispatch HTTP
-            _dispatch(webhook, delivery, payload_bytes)
+                # 5. Dispatch HTTP
+                _dispatch(webhook, delivery, payload_bytes)
 
-            # 6. Maintenance
-            if delivery.delivery_status == "FAILED":
-                webhook.failure_count = (webhook.failure_count or 0) + 1
-                if webhook.failure_count >= (webhook.max_retries or 5):
-                    webhook.is_active = 'N'
+                # 6. Maintenance
+                if delivery.delivery_status == "FAILED":
+                    webhook.failure_count = (webhook.failure_count or 0) + 1
+                    if webhook.failure_count >= (webhook.max_retries or 5):
+                        webhook.is_active = "N"
+                    else:
+                        delay = RETRY_DELAYS.get(webhook.failure_count, 3600)
+                        delivery.next_retry_date = datetime.utcnow() + timedelta(
+                            seconds=delay
+                        )
                 else:
-                    delay = RETRY_DELAYS.get(webhook.failure_count, 3600)
-                    delivery.next_retry_date = datetime.utcnow() + timedelta(seconds=delay)
-            else:
-                webhook.failure_count = 0
+                    webhook.failure_count = 0
 
-            local_session.commit()
-            delivery_ids.append(delivery.delivery_id)
+                webhook_session.commit()
+                delivery_ids.append(delivery.delivery_id)
+            except Exception as exc:
+                logger.error(
+                    f"[Webhook] Per-webhook dispatch error: {exc}", exc_info=True
+                )
+                webhook_session.rollback()
+            finally:
+                webhook_session.close()
 
     except Exception as exc:
         local_session.rollback()
@@ -274,46 +324,65 @@ def retry_failed_deliveries() -> None:
 
     try:
         now = datetime.utcnow()
-        pending = local_session.query(LogWebhookDelivery).filter(
-            LogWebhookDelivery.delivery_status == "FAILED",
-            LogWebhookDelivery.next_retry_date <= now
-        ).all()
+        pending = (
+            local_session.query(LogWebhookDelivery)
+            .filter(
+                LogWebhookDelivery.delivery_status == "FAILED",
+                LogWebhookDelivery.next_retry_date <= now,
+            )
+            .all()
+        )
 
         for old_delivery in pending:
-            webhook = local_session.query(DefWebhook).get(old_delivery.webhook_id)
-            if not webhook or webhook.is_active == 'N':
-                old_delivery.delivery_status = "PERMANENTLY_FAILED"
-                local_session.commit()
-                continue
+            # Use separate session per delivery to avoid transaction state conflicts
+            retry_session = Session()
+            try:
+                webhook = retry_session.query(DefWebhook).get(old_delivery.webhook_id)
+                if not webhook or webhook.is_active == "N":
+                    old_delivery.delivery_status = "PERMANENTLY_FAILED"
+                    retry_session.commit()
+                    retry_session.close()
+                    continue
 
-            new_delivery = LogWebhookDelivery(
-                webhook_id      = old_delivery.webhook_id,
-                tenant_id       = old_delivery.tenant_id,
-                event_name      = old_delivery.event_name,
-                table_name      = old_delivery.table_name,
-                payload         = old_delivery.payload,
-                attempt_number  = (old_delivery.attempt_number or 1) + 1,
-                delivery_status = "PENDING",
-                creation_date   = datetime.utcnow(),
-            )
-            local_session.add(new_delivery)
-            local_session.flush()
+                new_delivery = LogWebhookDelivery(
+                    webhook_id=old_delivery.webhook_id,
+                    tenant_id=old_delivery.tenant_id,
+                    event_name=old_delivery.event_name,
+                    table_name=old_delivery.table_name,
+                    payload=old_delivery.payload,
+                    attempt_number=(old_delivery.attempt_number or 1) + 1,
+                    delivery_status="PENDING",
+                    creation_date=datetime.utcnow(),
+                )
+                retry_session.add(new_delivery)
+                retry_session.flush()
 
-            payload_bytes = json.dumps(old_delivery.payload, default=str).encode("utf-8")
-            _dispatch(webhook, new_delivery, payload_bytes)
+                payload_bytes = json.dumps(old_delivery.payload, default=str).encode(
+                    "utf-8"
+                )
+                _dispatch(webhook, new_delivery, payload_bytes)
 
-            if new_delivery.delivery_status == "FAILED":
-                webhook.failure_count = (webhook.failure_count or 0) + 1
-                if webhook.failure_count >= (webhook.max_retries or 5):
-                    webhook.is_active = 'N'
+                if new_delivery.delivery_status == "FAILED":
+                    webhook.failure_count = (webhook.failure_count or 0) + 1
+                    if webhook.failure_count >= (webhook.max_retries or 5):
+                        webhook.is_active = "N"
+                    else:
+                        delay = RETRY_DELAYS.get(new_delivery.attempt_number, 3600)
+                        new_delivery.next_retry_date = datetime.utcnow() + timedelta(
+                            seconds=delay
+                        )
                 else:
-                    delay = RETRY_DELAYS.get(new_delivery.attempt_number, 3600)
-                    new_delivery.next_retry_date = datetime.utcnow() + timedelta(seconds=delay)
-            else:
-                webhook.failure_count = 0
+                    webhook.failure_count = 0
 
-            old_delivery.next_retry_date = None
-            local_session.commit()
+                old_delivery.next_retry_date = None
+                retry_session.commit()
+            except Exception as exc:
+                logger.error(
+                    f"[Webhook] Per-delivery retry error: {exc}", exc_info=True
+                )
+                retry_session.rollback()
+            finally:
+                retry_session.close()
     except Exception as exc:
         local_session.rollback()
         logger.error(f"[Webhook] retry_failed_deliveries crash: {exc}", exc_info=True)
