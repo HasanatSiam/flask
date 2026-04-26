@@ -87,16 +87,16 @@ def create_webhook_v2():
             return make_response(jsonify({'message': 'webhook_name and webhook_url are required'}), 400)
 
         new_webhook = DefWebhookV2(
-            tenant_id        = tenant_id,
-            webhook_name     = webhook_name,
-            webhook_url      = webhook_url,
-            secret_key       = data.get('secret_key'),
-            extra_headers    = data.get('extra_headers'),
-            filters          = data.get('filters'),
-            selected_columns = data.get('selected_columns'),
-            is_active        = data.get('is_active', 'Y').upper(),
-            created_by       = get_jwt_identity(),
-            creation_date    = datetime.utcnow()
+            tenant_id=tenant_id,
+            webhook_name=webhook_name,
+            webhook_url=webhook_url,
+            secret_key=data.get('secret_key'),
+            extra_headers=data.get('extra_headers'),
+            filters=data.get('filters'),
+            selected_columns=data.get('selected_columns'),
+            is_active=data.get('is_active', 'Y').upper(),
+            created_by=current_user_id,
+            creation_date=datetime.utcnow()
         )
         db.session.add(new_webhook)
         db.session.commit()
@@ -105,6 +105,96 @@ def create_webhook_v2():
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({'message': 'Error adding V2 webhook', 'error': str(e)}), 500)
+
+
+@webhooks_v2_bp.route('/def_webhooks_v2/with-subscriptions', methods=['POST'])
+@jwt_required()
+# @role_required()
+def create_webhook_v2_with_subscriptions():
+    try:
+        data = request.get_json() or {}
+
+        current_user_id = get_jwt_identity()
+        user = DefUser.query.get(int(current_user_id))
+        tenant_id = user.tenant_id if user else None
+        webhook_name = data.get('webhook_name')
+        webhook_url = data.get('webhook_url')
+
+        if not webhook_name or not webhook_url:
+            return make_response(jsonify({'message': 'webhook_name and webhook_url are required'}), 400)
+        if not tenant_id:
+            return make_response(jsonify({'message': 'Unable to resolve tenant for current user'}), 400)
+
+        event_v2_ids = data.get('event_v2_ids')
+        if event_v2_ids is None:
+            return make_response(jsonify({'message': 'event_v2_ids is required'}), 400)
+        if not isinstance(event_v2_ids, list) or not event_v2_ids:
+            return make_response(jsonify({'message': 'event_v2_ids must be a non-empty list'}), 400)
+
+        normalized_event_ids = []
+        for event_id in event_v2_ids:
+            if not isinstance(event_id, int):
+                return make_response(jsonify({'message': 'All event_v2_ids must be integers'}), 400)
+            if event_id not in normalized_event_ids:
+                normalized_event_ids.append(event_id)
+
+        valid_events = DefWebhookEventV2.query.filter(
+            DefWebhookEventV2.event_v2_id.in_(normalized_event_ids)
+        ).all()
+        valid_event_ids = [event.event_v2_id for event in valid_events]
+        invalid_event_ids = [
+            event_id for event_id in normalized_event_ids if event_id not in valid_event_ids
+        ]
+        if not valid_event_ids:
+            return make_response(jsonify({'message': 'event_v2_ids are invalid'}), 400)
+
+        new_webhook = DefWebhookV2(
+            tenant_id=tenant_id,
+            webhook_name=webhook_name,
+            webhook_url=webhook_url,
+            secret_key=data.get('secret_key'),
+            extra_headers=data.get('extra_headers'),
+            filters=data.get('filters'),
+            selected_columns=data.get('selected_columns'),
+            is_active=data.get('is_active', 'Y').upper(),
+            created_by=current_user_id,
+            creation_date=datetime.utcnow()
+        )
+        db.session.add(new_webhook)
+        db.session.flush()
+
+
+        created_subs = []
+        for event_id in valid_event_ids:
+            new_sub = DefWebhookSubscriptionV2(
+                tenant_id=tenant_id,
+                webhook_v2_id=new_webhook.webhook_v2_id,
+                event_v2_id=event_id,
+                created_by=current_user_id,
+                creation_date=datetime.utcnow(),
+                last_updated_by=current_user_id,
+                last_update_date=datetime.utcnow()
+            )
+            db.session.add(new_sub)
+            created_subs.append(new_sub)
+
+        db.session.commit()
+
+        return make_response(jsonify({
+            'message': 'V2 Webhook and subscriptions created successfully',
+            'result': {
+                'webhook': new_webhook.json(),
+                'subscriptions': [sub.json() for sub in created_subs],
+                'created_count': len(created_subs),
+                'invalid_event_ids': invalid_event_ids
+            }
+        }), 201)
+    except Exception as e:
+        db.session.rollback()
+        return make_response(jsonify({
+            'message': 'Error adding V2 webhook with subscriptions',
+            'error': str(e)
+        }), 500)
 
 @webhooks_v2_bp.route('/def_webhooks_v2', methods=['PUT'])
 @jwt_required()
@@ -326,10 +416,11 @@ def subscribe_webhook_v2():
             single_event_id = data.get('event_v2_id')
             event_v2_ids = [single_event_id] if single_event_id is not None else []
 
+        if event_v2_ids is None:
+            return make_response(jsonify({'message': 'event_v2_ids is required'}), 400)
         if not isinstance(event_v2_ids, list) or not event_v2_ids:
             return make_response(jsonify({'message': 'event_v2_ids must be a non-empty list'}), 400)
 
-        # Normalize IDs, deduplicate, and reject invalid values.
         normalized_event_ids = []
         for event_id in event_v2_ids:
             if not isinstance(event_id, int):
@@ -349,7 +440,10 @@ def subscribe_webhook_v2():
         valid_events = DefWebhookEventV2.query.filter(
             DefWebhookEventV2.event_v2_id.in_(normalized_event_ids)
         ).all()
-        valid_event_ids = [e.event_v2_id for e in valid_events]
+        valid_event_ids = [event.event_v2_id for event in valid_events]
+        invalid_event_ids = [
+            event_id for event_id in normalized_event_ids if event_id not in valid_event_ids
+        ]
 
         if not valid_event_ids:
             return make_response(jsonify({'message': 'event_v2_ids are invalid'}), 400)
@@ -385,7 +479,7 @@ def subscribe_webhook_v2():
             'message': 'Added successfully' if created_subs else 'No new subscriptions added',
             'created_count': len(created_subs),
             'skipped_existing_count': len(existing_event_ids),
-            'invalid_event_ids': [eid for eid in normalized_event_ids if eid not in valid_event_ids],
+            'invalid_event_ids': invalid_event_ids,
             'result': [s.json() for s in created_subs]
         }), 201 if created_subs else 200)
     except Exception as e:
