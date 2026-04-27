@@ -4,7 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 
 from executors.extensions import db
-from executors.models import DefWebhook, DefWebhookEvent, DefWebhookSubscription, DefUser
+from executors.models import DefWebhook, DefWebhookEvent, DefWebhookSubscription, DefUser, DefWebhookSubscriptionV
 from . import webhooks_bp
 
 @webhooks_bp.route('/def_webhook_subscriptions', methods=['POST'])
@@ -239,3 +239,34 @@ def delete_subscriptions():
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({'message': 'Error deleting subscriptions', 'error': str(e)}), 500)
+
+@webhooks_bp.route('/def_webhook_subscriptions_v', methods=['GET'])
+@jwt_required()
+def get_subscriptions_v():
+    try:
+        tenant_id = request.args.get('tenant_id', type=int)
+        webhook_id = request.args.get('webhook_id', type=int)
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+        
+        query = DefWebhookSubscriptionV.query
+        if tenant_id:
+            query = query.filter_by(tenant_id=tenant_id)
+        if webhook_id:
+            query = query.filter_by(webhook_id=webhook_id)
+
+        if page and limit:
+            paginated = query.order_by(DefWebhookSubscriptionV.webhook_id.desc()).paginate(
+                page=page, per_page=limit, error_out=False
+            )
+            return make_response(jsonify({
+                'result': [s.json() for s in paginated.items],
+                'total':  paginated.total,
+                'pages':  paginated.pages,
+                'page':   paginated.page
+            }), 200)
+            
+        subs = query.order_by(DefWebhookSubscriptionV.webhook_id.desc()).all()
+        return make_response(jsonify({'result': [s.json() for s in subs]}), 200)
+    except Exception as e:
+        return make_response(jsonify({'message': 'Error fetching subscription view', 'error': str(e)}), 500)
