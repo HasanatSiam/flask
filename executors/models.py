@@ -1704,10 +1704,10 @@ class InfoSchemaColumn(db.Model):
 # ── Webhook Models ────────────────────────────────────────────────────────────
 
 class DefWebhook(db.Model):
-    __tablename__  = 'def_webhooks_v2'
-    __table_args__ = {'schema': 'test'}
+    __tablename__  = 'def_webhooks'
+    __table_args__ = {'schema': 'apps'}
 
-    webhook_id       = db.Column(db.Integer, primary_key=True, autoincrement=True, name="webhook_v2_id")
+    webhook_id       = db.Column(db.Integer, primary_key=True, autoincrement=True)
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
     webhook_name     = db.Column(db.String(255), nullable=False)
     webhook_url      = db.Column(db.Text, nullable=False)
@@ -1716,14 +1716,12 @@ class DefWebhook(db.Model):
     filters          = db.Column(JSONB)
     selected_columns = db.Column(JSONB)
     is_active        = db.Column(db.String(1), nullable=False, default='Y')
-    
-    # Audit Columns
+    failure_count    = db.Column(db.Integer, nullable=False, default=0)
+    max_retries      = db.Column(db.Integer, nullable=False, default=3)
     created_by       = db.Column(db.Integer)
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by  = db.Column(db.Integer)
     last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    failure_count    = db.Column(db.Integer, nullable=False, default=0)
-    max_retries      = db.Column(db.Integer, nullable=False, default=5)
 
     def json(self):
         return {
@@ -1736,25 +1734,26 @@ class DefWebhook(db.Model):
             'filters'          : self.filters,
             'selected_columns' : self.selected_columns,
             'is_active'        : self.is_active,
+            'failure_count'    : self.failure_count,
+            'max_retries'      : self.max_retries,
             'created_by'       : self.created_by,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'  : self.last_updated_by,
             'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
-            'failure_count'   : self.failure_count,
-            'max_retries'     : self.max_retries,
         }
 
 class DefWebhookEvent(db.Model):
-    __tablename__  = 'def_webhook_events_v2'
-    __table_args__ = {'schema': 'test'}
+    __tablename__  = 'def_webhook_events'
+    __table_args__ = {'schema': 'apps'}
 
-    event_id         = db.Column(db.Integer, primary_key=True, autoincrement=True, name="event_v2_id")
+    event_id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'))
     api_endpoint_id  = db.Column(db.Integer, db.ForeignKey('apps.def_api_endpoints.api_endpoint_id'), nullable=False)
-    event_name       = db.Column(db.String(255), nullable=False)  # Friendly Label
-    event_key        = db.Column(db.String(128), nullable=False)  # Machine Name (e.g. user.created)
+    event_name       = db.Column(db.String(255), nullable=False)
+    event_key        = db.Column(db.String(128), nullable=False)
     description      = db.Column(db.Text)
-
-    # Audit Columns
+    failure_count    = db.Column(db.Integer, nullable=False, default=0)
+    max_retries      = db.Column(db.Integer, nullable=False, default=3)
     created_by       = db.Column(db.Integer)
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by  = db.Column(db.Integer)
@@ -1763,10 +1762,13 @@ class DefWebhookEvent(db.Model):
     def json(self):
         return {
             'event_id'         : self.event_id,
+            'tenant_id'        : self.tenant_id,
             'api_endpoint_id'  : self.api_endpoint_id,
             'event_name'       : self.event_name,
             'event_key'        : self.event_key,
             'description'      : self.description,
+            'failure_count'    : self.failure_count,
+            'max_retries'      : self.max_retries,
             'created_by'       : self.created_by,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'  : self.last_updated_by,
@@ -1774,15 +1776,13 @@ class DefWebhookEvent(db.Model):
         }
 
 class DefWebhookSubscription(db.Model):
-    __tablename__  = 'def_webhook_subscriptions_v2'
-    __table_args__ = {'schema': 'test'}
+    __tablename__  = 'def_webhook_subscriptions'
+    __table_args__ = {'schema': 'apps'}
 
-    sub_id           = db.Column(db.Integer, primary_key=True, autoincrement=True, name="sub_v2_id")
+    subscription_id  = db.Column(db.Integer, primary_key=True, autoincrement=True)
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
-    webhook_id       = db.Column(db.Integer, db.ForeignKey('test.def_webhooks_v2.webhook_v2_id', ondelete='CASCADE'), nullable=False)
-    event_id         = db.Column(db.Integer, db.ForeignKey('test.def_webhook_events_v2.event_v2_id', ondelete='CASCADE'), nullable=False)
-
-    # Audit Columns
+    webhook_id       = db.Column(db.Integer, db.ForeignKey('apps.def_webhooks.webhook_id', ondelete='CASCADE'), nullable=False)
+    event_id         = db.Column(db.Integer, db.ForeignKey('apps.def_webhook_events.event_id', ondelete='CASCADE'), nullable=False)
     created_by       = db.Column(db.Integer)
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by  = db.Column(db.Integer)
@@ -1790,7 +1790,7 @@ class DefWebhookSubscription(db.Model):
 
     def json(self):
         return {
-            'sub_id'           : self.sub_id,
+            'subscription_id'  : self.subscription_id,
             'tenant_id'        : self.tenant_id,
             'webhook_id'       : self.webhook_id,
             'event_id'         : self.event_id,
@@ -1801,27 +1801,21 @@ class DefWebhookSubscription(db.Model):
         }
 
 class LogWebhookDelivery(db.Model):
-    __tablename__  = 'log_webhook_deliveries_v2'
-    __table_args__ = {'schema': 'test'}
+    __tablename__  = 'log_webhook_deliveries'
+    __table_args__ = {'schema': 'apps'}
 
-    delivery_id      = db.Column(db.Integer, primary_key=True, autoincrement=True, name="delivery_v2_id")
+    delivery_id      = db.Column(db.Integer, primary_key=True, autoincrement=True)
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
-    webhook_id       = db.Column(db.Integer, db.ForeignKey('test.def_webhooks_v2.webhook_v2_id', ondelete='SET NULL'), nullable=True)
-    event_id         = db.Column(db.Integer, db.ForeignKey('test.def_webhook_events_v2.event_v2_id', ondelete='SET NULL'), nullable=True)
-    
-    # Retry Support
-    attempt_number   = db.Column(db.SmallInteger, nullable=False, default=1)
-    next_retry_date  = db.Column(db.DateTime)
-    # Optional: store which table/event name it was for easier debugging in logs
-    event_name       = db.Column(db.String(128)) 
-    table_name       = db.Column(db.String(64))
-    
+    webhook_id       = db.Column(db.Integer, db.ForeignKey('apps.def_webhooks.webhook_id', ondelete='SET NULL'))
+    event_id         = db.Column(db.Integer, db.ForeignKey('apps.def_webhook_events.event_id', ondelete='SET NULL'))
     payload          = db.Column(JSONB, nullable=False)
     response_body    = db.Column(db.Text)
     http_status      = db.Column(db.Integer)
-    delivery_status  = db.Column(db.String(20)) # SUCCESS / FAILED
+    delivery_status  = db.Column(db.String(20))
     duration_ms      = db.Column(db.Integer)
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
+    attempt_number   = db.Column(db.SmallInteger, nullable=False, default=1)
+    next_retry_date  = db.Column(db.DateTime)
 
     def json(self):
         return {
@@ -1837,6 +1831,4 @@ class LogWebhookDelivery(db.Model):
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'attempt_number'   : self.attempt_number,
             'next_retry_date'  : self.next_retry_date.isoformat() if self.next_retry_date else None,
-            'event_name'       : self.event_name,
-            'table_name'       : self.table_name,
         }

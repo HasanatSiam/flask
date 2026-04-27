@@ -1,53 +1,38 @@
-# webhook_service.py
+# utils/webhook_service.py
 """
-Automatic Outbound Webhook Service
-==================================
-This service listens for database commits and automatically dispatches webhooks
-based on table activity (Insert, Update, Delete).
-
-How it works
-------------
-1. The `handle_models_committed` signal listener captures successful DB transactions.
-2. It identifies the table, the operation (POST/PUT/DELETE), and the tenant.
-3. It queries DEF_WEBHOOKS for active hooks matching the table + method + tenant.
-4. It shapes the data (obeying selected_columns) and wraps it in a standard event.
-5. It handles delivery, retries, and failure logging.
+Service: Endpoint-Centric Webhook Service
+=====================================================
+This service dispatches webhooks based on specific API actions (Endpoint IDs).
+It provides a standardized envelope.
 """
 
-import hashlib
 import hmac
+import hashlib
 import json
 import logging
-import time
-
-from datetime import datetime, timedelta
-
 import requests
-from flask import g
-from flask_sqlalchemy.track_modifications import models_committed
-from flask_jwt_extended import get_jwt_identity
-from flask import has_request_context
-from sqlalchemy import inspect as sa_inspect
-from sqlalchemy.orm.attributes import NO_VALUE
-from executors.models import DefUser
+import time
+from datetime import datetime
 from sqlalchemy.orm import sessionmaker
 
 from executors.extensions import db
-from executors.models import DefWebhook, LogWebhookDelivery
+from executors.models import (
+    DefWebhook,
+    DefWebhookSubscription,
+    LogWebhookDelivery,
+    DefWebhookEvent,
+)
 
 logger = logging.getLogger(__name__)
 
 # ── Backoff schedule (seconds) per attempt number ────────────────────────────
 RETRY_DELAYS = {
-    1: 60,  # retry 1 → 1 min
-    2: 300,  # retry 2 → 5 min
-    3: 900,  # retry 3 → 15 min
-    4: 1800,  # retry 4 → 30 min
-    5: 3600,  # retry 5 → 1 hr
+    1: 60,    # retry 1 -> 1 min
+    2: 300,   # retry 2 -> 5 min
+    3: 900,   # retry 3 -> 15 min
+    4: 1800,  # retry 4 -> 30 min
+    5: 3600,  # retry 5 -> 1 hr
 }
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
 
 
 def _sign_payload(secret_key: str, body: bytes) -> str:
@@ -65,8 +50,8 @@ def _apply_filters(filters: dict | None, payload: dict) -> bool:
     return True
 
 
-def _shape_data(data: dict, selected_columns: list | None) -> dict:
-    """Return a subset of the data based on selected_columns."""
+def _shape_payload(data: dict, selected_columns: list | None) -> dict:
+    """Return a subset of the data based on selected_columns (root keys)."""
     if not selected_columns or not isinstance(selected_columns, list):
         return data
     return {k: v for k, v in data.items() if k in selected_columns}
@@ -75,8 +60,10 @@ def _shape_data(data: dict, selected_columns: list | None) -> dict:
 def _dispatch(
     webhook: DefWebhook, delivery: LogWebhookDelivery, payload_bytes: bytes
 ) -> None:
-    """Perform the actual HTTP call."""
+    """Perform the actual HTTP call and update delivery log."""
     headers = {"Content-Type": "application/json"}
+
+    # Add custom extra headers
     if webhook.extra_headers:
         headers.update(webhook.extra_headers)
 
@@ -94,231 +81,128 @@ def _dispatch(
         )
         duration_ms = int((time.time() - start) * 1000)
 
-        delivery.http_status_code = response.status_code
+        delivery.http_status = response.status_code
         delivery.response_body = response.text[:4000]
         delivery.duration_ms = duration_ms
-
-        if 200 <= response.status_code < 300:
-            delivery.delivery_status = "DELIVERED"
-        else:
-            delivery.delivery_status = "FAILED"
-            delivery.error_message = f"HTTP {response.status_code}"
+        delivery.delivery_status = (
+            "SUCCESS" if 200 <= response.status_code < 300 else "FAILED"
+        )
 
     except Exception as exc:
         delivery.delivery_status = "FAILED"
-        delivery.error_message = str(exc)[:500]
+        delivery.response_body = str(exc)[:500]
         delivery.duration_ms = int((time.time() - start) * 1000)
 
 
-# ── Database Listener ─────────────────────────────────────────────────────────
-
-
-def init_webhook_listener(app):
-    """Initialize the global database signal listener."""
-    models_committed.connect(handle_models_committed, sender=app)
-    logger.info("[Webhook] Automatic DB listener initialized.")
-
-
-def handle_models_committed(sender, changes):
-    """Signal handler triggered after successful DB commit."""
-    # Get the actor's tenant ID if possible
-    actor_tenant_id = None
-    if has_request_context():
-        # First check 'g' (cached)
-        if hasattr(g, "actor_tenant_id"):
-            actor_tenant_id = g.actor_tenant_id
-        else:
-            # Fallback: check JWT claims if we added it there, or query DB
-            # For now, let's query DB via the actor's user_id if we have it
-            user_id = get_jwt_identity()
-            if user_id:
-                Session = sessionmaker(bind=db.engine)
-                temp_session = Session()
-                try:
-                    user = temp_session.query(DefUser).get(int(user_id))
-                    if user:
-                        actor_tenant_id = user.tenant_id
-                        g.actor_tenant_id = actor_tenant_id  # Cache for this request
-                finally:
-                    temp_session.close()
-
-    for instance, operation in changes:
-        # Avoid recursive loops
-        if isinstance(instance, (DefWebhook, LogWebhookDelivery)):
-            continue
-
-        table_name = getattr(instance, "__tablename__", None)
-        if not table_name:
-            continue
-
-        method_map = {"insert": "POST", "update": "PUT", "delete": "DELETE"}
-        method = method_map.get(operation)
-        if not method:
-            continue
-
-        # Build payload from already-loaded column values only.
-        # In a models_committed callback, emitting SQL on the same session can fail.
-        full_data = _safe_instance_payload(instance)
-        if not full_data:
-            continue
-
-        # Collect potential interested tenants
-        interested_tenants = set()
-
-        # 1. The tenant the record belongs to
-        record_tenant_id = full_data.get("tenant_id")
-        if record_tenant_id:
-            interested_tenants.add(record_tenant_id)
-
-        # 2. The tenant who performed the action (The Actor)
-        if actor_tenant_id:
-            interested_tenants.add(actor_tenant_id)
-
-        if not interested_tenants:
-            continue
-
-        # Fire the webhook for each interested tenant
-        # (This handles the case where admin wants to see sub-tenant creation)
-        fire(
-            table_name=table_name,
-            method=method,
-            tenant_ids=list(interested_tenants),
-            payload=full_data,
-        )
-
-
-def _safe_instance_payload(instance) -> dict:
+def fire(api_endpoint_id: int, payload: dict, tenant_id: int) -> None:
     """
-    Return a dict of loaded column values without triggering lazy loads.
-    This is safe to call from SQLAlchemy commit signals.
+    Finds all business events and active webhooks for a given endpoint and dispatches them.
+    Supports filters and data shaping (selected columns).
     """
-    try:
-        state = sa_inspect(instance)
-        payload = {}
-
-        for attr in state.mapper.column_attrs:
-            attr_state = state.attrs.get(attr.key)
-            if attr_state is None:
-                continue
-            value = attr_state.loaded_value
-            if value is NO_VALUE:
-                continue
-            payload[attr.key] = value
-
-        return payload
-    except Exception:
-        return {}
-
-
-# ── Core Logic ────────────────────────────────────────────────────────────────
-
-
-def fire(
-    table_name: str, method: str, tenant_ids: list[int], payload: dict
-) -> list[int]:
-    """
-    Find matching webhooks and dispatch them.
-    Can accept a single tenant_id (int) or a list of tenant_ids.
-    """
-    if isinstance(tenant_ids, int):
-        tenant_ids = [tenant_ids]
-
     Session = sessionmaker(bind=db.engine)
-    local_session = Session()
+    session = Session()
 
-    delivery_ids = []
     try:
-        # Find matching webhooks: matching table, any of the tenant IDs, and method exists in array
-        webhooks = (
-            local_session.query(DefWebhook)
-            .filter(
-                DefWebhook.tenant_id.in_(tenant_ids),
-                DefWebhook.table_name == table_name,
-                DefWebhook.http_methods.contains([method]),
-                DefWebhook.is_active == "Y",
-            )
+        # 1. Find all Business Events associated with this technical endpoint
+        events = (
+            session.query(DefWebhookEvent)
+            .filter_by(api_endpoint_id=api_endpoint_id)
             .all()
         )
+        if not events:
+            return
 
-        if not webhooks:
-            return delivery_ids
-
-        for webhook in webhooks:
-            # Use separate session per webhook to avoid transaction state conflicts
-            webhook_session = Session()
-            try:
-                # 1. Apply Filters
-                if not _apply_filters(webhook.filters, payload):
-                    webhook_session.close()
-                    continue
-
-                # 2. Shape Payload (Column Selection)
-                shaped_data = _shape_data(payload, webhook.selected_columns)
-
-                # 3. Create Standard Event Wrapper
-                event_payload = {
-                    "event": f"{table_name}.{method.lower()}",
-                    "table": table_name,
-                    "occurred_at": datetime.utcnow().isoformat() + "Z",
-                    "webhook_name": webhook.webhook_name,
-                    "data": shaped_data,
-                }
-                # Ensure the structure is JSON-serializable (converts datetimes to strings etc.)
-                event_payload = json.loads(json.dumps(event_payload, default=str))
-                payload_bytes = json.dumps(event_payload).encode("utf-8")
-
-                # 4. Create Delivery Log
-                delivery = LogWebhookDelivery(
-                    webhook_id=webhook.webhook_id,
-                    tenant_id=webhook.tenant_id,  # Use the webhook's owner tenant ID
-                    event_name=event_payload["event"],
-                    table_name=table_name,
-                    trigger_method=method,
-                    payload=event_payload,
-                    attempt_number=1,
-                    delivery_status="PENDING",
-                    creation_date=datetime.utcnow(),
+        for event in events:
+            # 2. Find all active webhooks subscribed to this specific business event for this tenant
+            subscriptions = (
+                session.query(DefWebhookSubscription, DefWebhook)
+                .join(
+                    DefWebhook,
+                    DefWebhookSubscription.webhook_id
+                    == DefWebhook.webhook_id,
                 )
-                webhook_session.add(delivery)
-                webhook_session.flush()
+                .filter(
+                    DefWebhookSubscription.event_id == event.event_id,
+                    DefWebhook.tenant_id == tenant_id,
+                    DefWebhook.is_active == "Y",
+                )
+                .all()
+            )
 
-                # 5. Dispatch HTTP
-                _dispatch(webhook, delivery, payload_bytes)
+            for sub, webhook in subscriptions:
+                # Use a separate session for each webhook to avoid transaction state conflicts
+                webhook_session = Session()
+                try:
+                    # 3. Apply Filters
+                    if not _apply_filters(webhook.filters, payload):
+                        webhook_session.close()
+                        continue
 
-                # 6. Maintenance
-                if delivery.delivery_status == "FAILED":
-                    webhook.failure_count = (webhook.failure_count or 0) + 1
-                    if webhook.failure_count >= (webhook.max_retries or 5):
-                        webhook.is_active = "N"
+                    # 4. Shape Data
+                    shaped_data = _shape_payload(payload, webhook.selected_columns)
+
+                    # 5. Construct Standard Envelope
+                    event_payload = {
+                        "event": event.event_name,
+                        "event_key": event.event_key,
+                        "occurred_at": datetime.utcnow().isoformat() + "Z",
+                        "source": "action_service",
+                        "data": shaped_data,
+                    }
+
+                    # Ensure clean JSON
+                    event_payload = json.loads(json.dumps(event_payload, default=str))
+                    payload_bytes = json.dumps(event_payload).encode("utf-8")
+
+                    # 6. Create Delivery Log
+                    delivery = LogWebhookDelivery(
+                        webhook_id=webhook.webhook_id,
+                        event_id=event.event_id,
+                        tenant_id=tenant_id,
+                        payload=event_payload,
+                        delivery_status="PENDING",
+                        creation_date=datetime.utcnow(),
+                        attempt_number=1,
+                    )
+                    webhook_session.add(delivery)
+                    webhook_session.flush()
+
+                    # 7. Dispatch
+                    _dispatch(webhook, delivery, payload_bytes)
+
+                    # 8. Maintenance
+                    if delivery.delivery_status == "FAILED":
+                        webhook.failure_count = (webhook.failure_count or 0) + 1
+                        if webhook.failure_count >= (webhook.max_retries or 5):
+                            webhook.is_active = "N"
+                        else:
+                            from datetime import timedelta
+                            delay = RETRY_DELAYS.get(webhook.failure_count, 3600)
+                            delivery.next_retry_date = datetime.utcnow() + timedelta(seconds=delay)
                     else:
-                        delay = RETRY_DELAYS.get(webhook.failure_count, 3600)
-                        delivery.next_retry_date = datetime.utcnow() + timedelta(
-                            seconds=delay
-                        )
-                else:
-                    webhook.failure_count = 0
+                        webhook.failure_count = 0
 
-                webhook_session.commit()
-                delivery_ids.append(delivery.delivery_id)
-            except Exception as exc:
-                logger.error(
-                    f"[Webhook] Per-webhook dispatch error: {exc}", exc_info=True
-                )
-                webhook_session.rollback()
-            finally:
-                webhook_session.close()
+                    webhook_session.commit()
+                except Exception as e:
+                    logger.error(
+                        f"[Webhook] Webhook dispatch error: {e}", exc_info=True
+                    )
+                    webhook_session.rollback()
+                finally:
+                    webhook_session.close()
 
-    except Exception as exc:
-        local_session.rollback()
-        logger.error(f"[Webhook] fire() automatic crash: {exc}", exc_info=True)
+    except Exception as e:
+        logger.error(f"[Webhook] fire crash: {e}", exc_info=True)
+        session.rollback()
     finally:
-        local_session.close()
-
-    return delivery_ids
+        session.close()
 
 
 def retry_failed_deliveries() -> None:
-    """Retry logic for Celery Beat."""
+    """
+    Celery Beat task: Retries all FAILED webhook deliveries
+    whose next_retry_date is due.
+    """
     Session = sessionmaker(bind=db.engine)
     local_session = Session()
 
@@ -334,7 +218,6 @@ def retry_failed_deliveries() -> None:
         )
 
         for old_delivery in pending:
-            # Use separate session per delivery to avoid transaction state conflicts
             retry_session = Session()
             try:
                 webhook = retry_session.query(DefWebhook).get(old_delivery.webhook_id)
@@ -346,9 +229,8 @@ def retry_failed_deliveries() -> None:
 
                 new_delivery = LogWebhookDelivery(
                     webhook_id=old_delivery.webhook_id,
+                    event_id=old_delivery.event_id,
                     tenant_id=old_delivery.tenant_id,
-                    event_name=old_delivery.event_name,
-                    table_name=old_delivery.table_name,
                     payload=old_delivery.payload,
                     attempt_number=(old_delivery.attempt_number or 1) + 1,
                     delivery_status="PENDING",
@@ -357,9 +239,7 @@ def retry_failed_deliveries() -> None:
                 retry_session.add(new_delivery)
                 retry_session.flush()
 
-                payload_bytes = json.dumps(old_delivery.payload, default=str).encode(
-                    "utf-8"
-                )
+                payload_bytes = json.dumps(old_delivery.payload, default=str).encode("utf-8")
                 _dispatch(webhook, new_delivery, payload_bytes)
 
                 if new_delivery.delivery_status == "FAILED":
@@ -367,19 +247,16 @@ def retry_failed_deliveries() -> None:
                     if webhook.failure_count >= (webhook.max_retries or 5):
                         webhook.is_active = "N"
                     else:
+                        from datetime import timedelta
                         delay = RETRY_DELAYS.get(new_delivery.attempt_number, 3600)
-                        new_delivery.next_retry_date = datetime.utcnow() + timedelta(
-                            seconds=delay
-                        )
+                        new_delivery.next_retry_date = datetime.utcnow() + timedelta(seconds=delay)
                 else:
                     webhook.failure_count = 0
 
                 old_delivery.next_retry_date = None
                 retry_session.commit()
             except Exception as exc:
-                logger.error(
-                    f"[Webhook] Per-delivery retry error: {exc}", exc_info=True
-                )
+                logger.error(f"[Webhook] Per-delivery retry error: {exc}", exc_info=True)
                 retry_session.rollback()
             finally:
                 retry_session.close()

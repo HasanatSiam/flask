@@ -12,10 +12,7 @@ from . import webhooks_bp
 # @role_required()
 def get_def_webhooks():
     try:
-        current_user_id = get_jwt_identity()
-        user            = DefUser.query.get(int(current_user_id))
-        tenant_id       = user.tenant_id if user else None
-
+        tenant_id = request.args.get('tenant_id', type=int)
         webhook_id = request.args.get('webhook_id', type=int)
         webhook_name  = request.args.get('webhook_name',  type=str)
         is_active     = request.args.get('is_active',     type=str)
@@ -25,6 +22,9 @@ def get_def_webhooks():
         if webhook_id:
             webhook = DefWebhook.query.filter_by(webhook_id=webhook_id).first()
             if webhook:
+                # Optional: if tenant_id provided in URL, verify it matches
+                if tenant_id and webhook.tenant_id != tenant_id:
+                    return make_response(jsonify({'message': 'Webhook found but tenant_id mismatch'}), 403)
                 return make_response(jsonify({'result': webhook.json()}), 200)
             return make_response(jsonify({'message': 'Webhook not found'}), 404)
 
@@ -32,6 +32,9 @@ def get_def_webhooks():
 
         if tenant_id:
             query = query.filter_by(tenant_id=tenant_id)
+        elif user_tenant_id != 1:
+            # Fallback (lock out if no ID found for non-admin)
+            query = query.filter(DefWebhook.tenant_id == -1)
         if webhook_name:
             query = query.filter(DefWebhook.webhook_name.ilike(f'%{webhook_name}%'))
         if is_active:
@@ -80,12 +83,15 @@ def create_webhook():
             filters=data.get('filters'),
             selected_columns=data.get('selected_columns'),
             is_active=data.get('is_active', 'Y').upper(),
+            max_retries=data.get('max_retries', 3),
             created_by=current_user_id,
-            creation_date=datetime.utcnow()
+            creation_date=datetime.utcnow(),
+            last_update_date=datetime.utcnow(),
+            last_updated_by=current_user_id
         )
         db.session.add(new_webhook)
         db.session.commit()
-        return make_response(jsonify({'message': 'Webhook added successfully', 'result': new_webhook.json()}), 201)
+        return make_response(jsonify({'message': 'Added successfully', 'result': new_webhook.json()}), 201)
 
     except Exception as e:
         db.session.rollback()
@@ -142,6 +148,7 @@ def create_webhook_with_subscriptions():
             filters=data.get('filters'),
             selected_columns=data.get('selected_columns'),
             is_active=data.get('is_active', 'Y').upper(),
+            max_retries=data.get('max_retries', 3),
             created_by=current_user_id,
             creation_date=datetime.utcnow()
         )
@@ -150,6 +157,7 @@ def create_webhook_with_subscriptions():
 
 
         created_subs = []
+        existing_event_ids = []
         for event_id in valid_event_ids:
             new_sub = DefWebhookSubscription(
                 tenant_id=tenant_id,
@@ -166,14 +174,12 @@ def create_webhook_with_subscriptions():
         db.session.commit()
 
         return make_response(jsonify({
-            'message': 'Webhook and subscriptions created successfully',
-            'result': {
-                'webhook': new_webhook.json(),
-                'subscriptions': [sub.json() for sub in created_subs],
-                'created_count': len(created_subs),
-                'invalid_event_ids': invalid_event_ids
-            }
-        }), 201)
+            'message': 'Added successfully',
+            'created_count': len(created_subs),
+            'skipped_existing_count': len(existing_event_ids),
+            'invalid_event_ids': invalid_event_ids,
+            'result': [s.json() for s in created_subs]
+        }), 201 if created_subs else 200)
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({
@@ -202,11 +208,12 @@ def update_webhook():
         webhook.filters          = data.get('filters',          webhook.filters)
         webhook.selected_columns = data.get('selected_columns', webhook.selected_columns)
         webhook.is_active        = data.get('is_active',        webhook.is_active)
+        webhook.max_retries      = data.get('max_retries',      webhook.max_retries)
         webhook.last_updated_by  = get_jwt_identity()
         webhook.last_update_date = datetime.utcnow()
 
         db.session.commit()
-        return make_response(jsonify({'message': 'Webhook edited successfully'}), 200)
+        return make_response(jsonify({'message': 'Edited successfully'}), 200)
 
     except Exception as e:
         db.session.rollback()
@@ -231,7 +238,7 @@ def delete_webhook():
             db.session.delete(w)
 
         db.session.commit()
-        return make_response(jsonify({'message': f'{len(webhooks)} webhook(s) deleted successfully'}), 200)
+        return make_response(jsonify({'message': 'Deleted successfully'}), 200)
 
     except Exception as e:
         db.session.rollback()
@@ -248,6 +255,9 @@ def toggle_webhook():
             return make_response(jsonify({'message': 'Webhook not found'}), 404)
 
         webhook.is_active        = 'N' if webhook.is_active == 'Y' else 'Y'
+        if webhook.is_active == 'Y':
+            webhook.failure_count = 0  # reset failure count on manual reactivation
+            
         webhook.last_updated_by  = get_jwt_identity()
         webhook.last_update_date = datetime.utcnow()
 
