@@ -1,6 +1,6 @@
+# api/webhooks/__init__.py
 from flask import Blueprint
 
-webhooks_bp = Blueprint("webhooks_bp", __name__)
+webhooks_bp = Blueprint('webhooks', __name__)
 
-from .webhooks import *
-from .webhook_deliveries import *
+from . import webhooks, logs, events, subscriptions

@@ -8,7 +8,6 @@ from .stored_function import execute as execute_function
 from .http import execute as http_request
 from .python_v1 import execute as python_script
 from .extensions import db
-from utils.webhook_service import init_webhook_listener
 
 # load_dotenv()
 # Define the path where the .env file is stored
@@ -50,8 +49,6 @@ flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = True
 db.init_app(flask_app)
 
 
-with flask_app.app_context():
-    init_webhook_listener(flask_app)
     
 celery_app = flask_app.extensions["celery"]
 

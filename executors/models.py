@@ -1704,108 +1704,10 @@ class InfoSchemaColumn(db.Model):
 # ── Webhook Models ────────────────────────────────────────────────────────────
 
 class DefWebhook(db.Model):
-    __tablename__  = 'def_webhooks'
-    __table_args__ = {'schema': 'apps'}
-
-    webhook_id       = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
-    # User-defined label, e.g. "ServiceNow Incident Sync"
-    webhook_name     = db.Column(db.String(255), nullable=False)
-    webhook_url      = db.Column(db.Text, nullable=False)
-    # The table this webhook listens to, e.g. "def_controls" — required for matching
-    table_name       = db.Column(db.String(64), nullable=False)
-    # JSONB array of HTTP methods that trigger this webhook, e.g. ["POST", "PUT"]
-    http_methods     = db.Column(JSONB, nullable=False, default=list)
-    secret_key       = db.Column(db.String(128))
-    extra_headers    = db.Column(JSONB)
-    filters          = db.Column(JSONB)
-    selected_columns = db.Column(JSONB)
-    extra_headers    = db.Column(JSONB)
-    filters          = db.Column(JSONB)
-    selected_columns = db.Column(JSONB)
-    is_active        = db.Column(db.String(1), nullable=False, default='Y')
-    failure_count    = db.Column(db.Integer, nullable=False, default=0)
-    max_retries      = db.Column(db.Integer, nullable=False, default=5)
-    created_by       = db.Column(db.Integer, nullable=False)
-    creation_date    = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    last_updated_by  = db.Column(db.Integer)
-    last_update_date = db.Column(db.DateTime)
-
-    def json(self):
-        return {
-            'webhook_id'      : self.webhook_id,
-            'tenant_id'       : self.tenant_id,
-            'webhook_name'    : self.webhook_name,
-            'webhook_url'     : self.webhook_url,
-            'table_name'      : self.table_name,
-            'http_methods'    : self.http_methods,
-            'secret_key'      : self.secret_key,
-            'extra_headers'   : self.extra_headers,
-            'filters'         : self.filters,
-            'selected_columns': self.selected_columns,
-            'is_active'       : self.is_active,
-            'failure_count'   : self.failure_count,
-            'max_retries'     : self.max_retries,
-            'created_by'      : self.created_by,
-            'creation_date'   : self.creation_date.isoformat() if self.creation_date else None,
-            'last_updated_by' : self.last_updated_by,
-            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None,
-        }
-
-
-class LogWebhookDelivery(db.Model):
-    __tablename__  = 'log_webhook_deliveries'
-    __table_args__ = {'schema': 'apps'}
-
-    delivery_id      = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    webhook_id       = db.Column(db.Integer, db.ForeignKey('apps.def_webhooks.webhook_id'), nullable=False)
-    tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
-    # Which table triggered this delivery, copied from def_webhooks.table_name
-    table_name       = db.Column(db.String(64), nullable=False)
-    # The automatic event identity, e.g. "def_controls.post"
-    event_name       = db.Column(db.String(128), nullable=False)
-    # The HTTP method that actually fired this delivery: POST / PUT / DELETE / GET
-    trigger_method   = db.Column(db.String(10), nullable=False)
-    payload          = db.Column(JSONB, nullable=False)
-    attempt_number   = db.Column(db.SmallInteger, nullable=False, default=1)
-    delivery_status  = db.Column(db.String(20), nullable=False, default='PENDING')
-    http_status_code = db.Column(db.SmallInteger)
-    response_body    = db.Column(db.Text)
-    error_message    = db.Column(db.Text)
-    duration_ms      = db.Column(db.Integer)
-    next_retry_date  = db.Column(db.DateTime)
-    creation_date    = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-    def json(self):
-        return {
-            'delivery_id'      : self.delivery_id,
-            'webhook_id'       : self.webhook_id,
-            'tenant_id'        : self.tenant_id,
-            'table_name'       : self.table_name,
-            'event_name'       : self.event_name,
-            'trigger_method'   : self.trigger_method,
-            'payload'          : self.payload,
-            'attempt_number'   : self.attempt_number,
-            'delivery_status'  : self.delivery_status,
-            'http_status_code' : self.http_status_code,
-            'response_body'    : self.response_body,
-            'error_message'    : self.error_message,
-            'duration_ms'      : self.duration_ms,
-            'next_retry_date'  : self.next_retry_date.isoformat() if self.next_retry_date else None,
-            'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
-        }
-
-
-# ==============================================================================
-# --- WEBHOOK V2 (TESTING SERVICE B) START ---
-# These models are for testing the endpoint-centric webhook service.
-# ==============================================================================
-
-class DefWebhookV2(db.Model):
     __tablename__  = 'def_webhooks_v2'
     __table_args__ = {'schema': 'test'}
 
-    webhook_v2_id    = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    webhook_id       = db.Column(db.Integer, primary_key=True, autoincrement=True, name="webhook_v2_id")
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
     webhook_name     = db.Column(db.String(255), nullable=False)
     webhook_url      = db.Column(db.Text, nullable=False)
@@ -1820,10 +1722,12 @@ class DefWebhookV2(db.Model):
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by  = db.Column(db.Integer)
     last_update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    failure_count    = db.Column(db.Integer, nullable=False, default=0)
+    max_retries      = db.Column(db.Integer, nullable=False, default=5)
 
     def json(self):
         return {
-            'webhook_v2_id'    : self.webhook_v2_id,
+            'webhook_id'       : self.webhook_id,
             'tenant_id'        : self.tenant_id,
             'webhook_name'     : self.webhook_name,
             'webhook_url'      : self.webhook_url,
@@ -1836,13 +1740,15 @@ class DefWebhookV2(db.Model):
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'  : self.last_updated_by,
             'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
+            'failure_count'   : self.failure_count,
+            'max_retries'     : self.max_retries,
         }
 
-class DefWebhookEventV2(db.Model):
+class DefWebhookEvent(db.Model):
     __tablename__  = 'def_webhook_events_v2'
     __table_args__ = {'schema': 'test'}
 
-    event_v2_id      = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    event_id         = db.Column(db.Integer, primary_key=True, autoincrement=True, name="event_v2_id")
     api_endpoint_id  = db.Column(db.Integer, db.ForeignKey('apps.def_api_endpoints.api_endpoint_id'), nullable=False)
     event_name       = db.Column(db.String(255), nullable=False)  # Friendly Label
     event_key        = db.Column(db.String(128), nullable=False)  # Machine Name (e.g. user.created)
@@ -1856,7 +1762,7 @@ class DefWebhookEventV2(db.Model):
 
     def json(self):
         return {
-            'event_v2_id'      : self.event_v2_id,
+            'event_id'         : self.event_id,
             'api_endpoint_id'  : self.api_endpoint_id,
             'event_name'       : self.event_name,
             'event_key'        : self.event_key,
@@ -1867,14 +1773,14 @@ class DefWebhookEventV2(db.Model):
             'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
         }
 
-class DefWebhookSubscriptionV2(db.Model):
+class DefWebhookSubscription(db.Model):
     __tablename__  = 'def_webhook_subscriptions_v2'
     __table_args__ = {'schema': 'test'}
 
-    sub_v2_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    sub_id           = db.Column(db.Integer, primary_key=True, autoincrement=True, name="sub_v2_id")
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
-    webhook_v2_id    = db.Column(db.Integer, db.ForeignKey('test.def_webhooks_v2.webhook_v2_id', ondelete='CASCADE'), nullable=False)
-    event_v2_id      = db.Column(db.Integer, db.ForeignKey('test.def_webhook_events_v2.event_v2_id', ondelete='CASCADE'), nullable=False)
+    webhook_id       = db.Column(db.Integer, db.ForeignKey('test.def_webhooks_v2.webhook_v2_id', ondelete='CASCADE'), nullable=False)
+    event_id         = db.Column(db.Integer, db.ForeignKey('test.def_webhook_events_v2.event_v2_id', ondelete='CASCADE'), nullable=False)
 
     # Audit Columns
     created_by       = db.Column(db.Integer)
@@ -1884,24 +1790,31 @@ class DefWebhookSubscriptionV2(db.Model):
 
     def json(self):
         return {
-            'sub_v2_id'        : self.sub_v2_id,
+            'sub_id'           : self.sub_id,
             'tenant_id'        : self.tenant_id,
-            'webhook_v2_id'    : self.webhook_v2_id,
-            'event_v2_id'      : self.event_v2_id,
+            'webhook_id'       : self.webhook_id,
+            'event_id'         : self.event_id,
             'created_by'       : self.created_by,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'  : self.last_updated_by,
             'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
         }
 
-class LogWebhookDeliveryV2(db.Model):
+class LogWebhookDelivery(db.Model):
     __tablename__  = 'log_webhook_deliveries_v2'
     __table_args__ = {'schema': 'test'}
 
-    delivery_v2_id   = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    delivery_id      = db.Column(db.Integer, primary_key=True, autoincrement=True, name="delivery_v2_id")
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'), nullable=False)
-    webhook_v2_id    = db.Column(db.Integer, db.ForeignKey('test.def_webhooks_v2.webhook_v2_id', ondelete='SET NULL'), nullable=True)
-    event_v2_id      = db.Column(db.Integer, db.ForeignKey('test.def_webhook_events_v2.event_v2_id', ondelete='SET NULL'), nullable=True)
+    webhook_id       = db.Column(db.Integer, db.ForeignKey('test.def_webhooks_v2.webhook_v2_id', ondelete='SET NULL'), nullable=True)
+    event_id         = db.Column(db.Integer, db.ForeignKey('test.def_webhook_events_v2.event_v2_id', ondelete='SET NULL'), nullable=True)
+    
+    # Retry Support
+    attempt_number   = db.Column(db.SmallInteger, nullable=False, default=1)
+    next_retry_date  = db.Column(db.DateTime)
+    # Optional: store which table/event name it was for easier debugging in logs
+    event_name       = db.Column(db.String(128)) 
+    table_name       = db.Column(db.String(64))
     
     payload          = db.Column(JSONB, nullable=False)
     response_body    = db.Column(db.Text)
@@ -1912,18 +1825,18 @@ class LogWebhookDeliveryV2(db.Model):
 
     def json(self):
         return {
-            'delivery_v2_id'   : self.delivery_v2_id,
+            'delivery_id'      : self.delivery_id,
             'tenant_id'        : self.tenant_id,
-            'webhook_v2_id'    : self.webhook_v2_id,
-            'event_v2_id'      : self.event_v2_id,
+            'webhook_id'       : self.webhook_id,
+            'event_id'         : self.event_id,
             'payload'          : self.payload,
             'response_body'    : self.response_body,
             'http_status'      : self.http_status,
             'delivery_status'  : self.delivery_status,
             'duration_ms'      : self.duration_ms,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
+            'attempt_number'   : self.attempt_number,
+            'next_retry_date'  : self.next_retry_date.isoformat() if self.next_retry_date else None,
+            'event_name'       : self.event_name,
+            'table_name'       : self.table_name,
         }
-
-# ==============================================================================
-# --- WEBHOOK V2 (TESTING SERVICE B) END ---
-# ==============================================================================
