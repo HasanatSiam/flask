@@ -1752,8 +1752,6 @@ class DefWebhookEvent(db.Model):
     event_name       = db.Column(db.String(255), nullable=False)
     event_key        = db.Column(db.String(128), nullable=False)
     description      = db.Column(db.Text)
-    failure_count    = db.Column(db.Integer, nullable=False, default=0)
-    max_retries      = db.Column(db.Integer, nullable=False, default=3)
     created_by       = db.Column(db.Integer)
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
     last_updated_by  = db.Column(db.Integer)
@@ -1767,8 +1765,6 @@ class DefWebhookEvent(db.Model):
             'event_name'       : self.event_name,
             'event_key'        : self.event_key,
             'description'      : self.description,
-            'failure_count'    : self.failure_count,
-            'max_retries'      : self.max_retries,
             'created_by'       : self.created_by,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'  : self.last_updated_by,
@@ -1831,4 +1827,37 @@ class LogWebhookDelivery(db.Model):
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'attempt_number'   : self.attempt_number,
             'next_retry_date'  : self.next_retry_date.isoformat() if self.next_retry_date else None,
+        }
+
+class DefWebhookSubscriptionV(db.Model):
+    __tablename__  = 'def_webhook_subscriptions_v'
+    __table_args__ = {'schema': 'apps'}
+
+    webhook_id       = db.Column(db.Integer, primary_key=True)
+    tenant_id        = db.Column(db.Integer)
+    webhook_name     = db.Column(db.String(255))
+    webhook_url      = db.Column(db.Text)
+    is_active        = db.Column(db.String(1))
+    failure_count    = db.Column(db.Integer)
+    max_retries      = db.Column(db.Integer)
+    events           = db.Column(JSONB)
+    created_by       = db.Column(db.Integer)
+    creation_date    = db.Column(db.DateTime)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime)
+
+    def json(self):
+        return {
+            'webhook_id'       : self.webhook_id,
+            'tenant_id'        : self.tenant_id,
+            'webhook_name'     : self.webhook_name,
+            'webhook_url'      : self.webhook_url,
+            'is_active'        : self.is_active,
+            'failure_count'    : self.failure_count,
+            'max_retries'      : self.max_retries,
+            'events'           : self.events or [],
+            'created_by'       : self.created_by,
+            'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by'  : self.last_updated_by,
+            'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
         }
