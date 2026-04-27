@@ -44,7 +44,7 @@ flask_app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_pre_ping": True,
     "pool_recycle": 300,
 }
-flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = True
+flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(flask_app)
 
