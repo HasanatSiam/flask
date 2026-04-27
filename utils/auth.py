@@ -78,7 +78,7 @@ def role_required():
 
                 if not allowed_api_endpoint_ids:
                     return jsonify({"message": "User has no API access roles"}), 403
-
+ 
                 # ── Cache Lookup (Redis)
                 cache_key = f"rbac:user:{current_user_id}"
                 user_rbac = cache.get(cache_key)
@@ -146,14 +146,14 @@ def role_required():
                     # Normalize status handling (supports tuple/dict/Response returns)
                     status_code = flask_response.status_code
                     if 200 <= status_code < 300:
-                        from utils.webhook_service_v2 import fire_v2
+                        from utils.webhook_service import fire
 
                         # Use pre-fetched user info (user_tenant_id obtained before route committed)
                         if user_tenant_id and endpoint_id:
                             payload = flask_response.get_json(silent=True) or {}
 
-                            # Fire V2 (Endpoint-Centric)
-                            fire_v2(
+                            # Fire (Endpoint-Centric)
+                            fire(
                                 api_endpoint_id=endpoint_id,
                                 payload=payload,
                                 tenant_id=user_tenant_id,
@@ -201,7 +201,7 @@ def encrypt(value, passphrase):
 
     return base64.urlsafe_b64encode(openssl_bytes).decode()
 
-
+ 
 def decrypt(encrypted_value, passphrase):
     # URL-decode and Base64-decode
     encrypted_bytes = base64.urlsafe_b64decode(encrypted_value)
