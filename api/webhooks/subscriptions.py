@@ -246,6 +246,7 @@ def get_subscriptions_v():
     try:
         tenant_id = request.args.get('tenant_id', type=int)
         webhook_id = request.args.get('webhook_id', type=int)
+        webhook_name = request.args.get('webhook_name', type=str)
         page = request.args.get('page', type=int)
         limit = request.args.get('limit', type=int)
         
@@ -254,6 +255,8 @@ def get_subscriptions_v():
             query = query.filter_by(tenant_id=tenant_id)
         if webhook_id:
             query = query.filter_by(webhook_id=webhook_id)
+        if webhook_name:
+            query = query.filter(DefWebhookSubscriptionV.webhook_name.ilike(f'%{webhook_name}%'))
 
         if page and limit:
             paginated = query.order_by(DefWebhookSubscriptionV.webhook_id.desc()).paginate(
