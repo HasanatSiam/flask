@@ -150,14 +150,14 @@ def create_webhook_with_subscriptions():
             is_active=data.get('is_active', 'Y').upper(),
             max_retries=data.get('max_retries', 3),
             created_by=current_user_id,
-            creation_date=datetime.utcnow()
+            creation_date=datetime.utcnow(),
+            last_updated_by=current_user_id,
+            last_update_date=datetime.utcnow()
         )
         db.session.add(new_webhook)
         db.session.flush()
 
-
         created_subs = []
-        existing_event_ids = []
         for event_id in valid_event_ids:
             new_sub = DefWebhookSubscription(
                 tenant_id=tenant_id,
@@ -176,9 +176,9 @@ def create_webhook_with_subscriptions():
         return make_response(jsonify({
             'message': 'Added successfully',
             'created_count': len(created_subs),
-            'skipped_existing_count': len(existing_event_ids),
             'invalid_event_ids': invalid_event_ids,
-            'result': [s.json() for s in created_subs]
+            'webhook': new_webhook.json(),
+            'subscriptions': [s.json() for s in created_subs]
         }), 201 if created_subs else 200)
     except Exception as e:
         db.session.rollback()
@@ -186,6 +186,102 @@ def create_webhook_with_subscriptions():
             'message': 'Error adding webhook with subscriptions',
             'error': str(e)
         }), 500)
+
+@webhooks_bp.route('/def_webhooks/with-subscriptions', methods=['PUT'])
+@jwt_required()
+# @role_required()
+def update_webhook_with_subscriptions():
+    try:
+        webhook_id = request.args.get('webhook_id', type=int)
+        if not webhook_id:
+            return make_response(jsonify({'message': 'webhook_id is required'}), 400)
+
+        webhook = DefWebhook.query.filter_by(webhook_id=webhook_id).first()
+        if not webhook:
+            return make_response(jsonify({'message': 'Webhook not found'}), 404)
+
+        data = request.get_json() or {}
+        current_user_id = get_jwt_identity()
+
+        # Update webhook details
+        if 'webhook_name' in data:     webhook.webhook_name     = data['webhook_name']
+        if 'webhook_url' in data:      webhook.webhook_url      = data['webhook_url']
+        if 'secret_key' in data:       webhook.secret_key       = data['secret_key']
+        if 'extra_headers' in data:    webhook.extra_headers    = data['extra_headers']
+        if 'filters' in data:          webhook.filters          = data['filters']
+        if 'selected_columns' in data: webhook.selected_columns = data['selected_columns']
+        if 'is_active' in data:        webhook.is_active        = data['is_active'].upper()
+        if 'max_retries' in data:      webhook.max_retries      = data['max_retries']
+        
+        webhook.last_updated_by  = current_user_id
+        webhook.last_update_date = datetime.utcnow()
+
+        event_ids = data.get('event_ids')
+        invalid_event_ids = []
+        added_count = 0
+        deleted_count = 0
+
+        if event_ids is not None:
+            if not isinstance(event_ids, list):
+                return make_response(jsonify({'message': 'event_ids must be a list'}), 400)
+
+            normalized_event_ids = list(set(event_ids))
+            
+            valid_events = DefWebhookEvent.query.filter(
+                DefWebhookEvent.event_id.in_(normalized_event_ids)
+            ).all() if normalized_event_ids else []
+            valid_event_ids = [event.event_id for event in valid_events]
+            invalid_event_ids = [eid for eid in normalized_event_ids if eid not in valid_event_ids]
+
+            if normalized_event_ids and not valid_event_ids:
+                return make_response(jsonify({'message': 'All provided event_ids are invalid'}), 400)
+
+            existing_subs = DefWebhookSubscription.query.filter_by(webhook_id=webhook_id).all()
+            existing_event_ids = {sub.event_id: sub for sub in existing_subs}
+
+            # Add new subscriptions
+            for event_id in valid_event_ids:
+                if event_id not in existing_event_ids:
+                    new_sub = DefWebhookSubscription(
+                        tenant_id=webhook.tenant_id,
+                        webhook_id=webhook_id,
+                        event_id=event_id,
+                        created_by=current_user_id,
+                        creation_date=datetime.utcnow(),
+                        last_updated_by=current_user_id,
+                        last_update_date=datetime.utcnow()
+                    )
+                    db.session.add(new_sub)
+                    added_count += 1
+
+            # Delete removed subscriptions
+            for event_id, sub in existing_event_ids.items():
+                if event_id not in valid_event_ids:
+                    db.session.delete(sub)
+                    deleted_count += 1
+
+        db.session.commit()
+
+        current_subs = DefWebhookSubscription.query.filter_by(webhook_id=webhook_id).all()
+
+        response_data = {
+            'message': 'Updated successfully',
+            'webhook': webhook.json()
+        }
+        
+        if event_ids is not None:
+            response_data.update({
+                'subscriptions': [s.json() for s in current_subs],
+                'added_count': added_count,
+                'deleted_count': deleted_count,
+                'invalid_event_ids': invalid_event_ids
+            })
+
+        return make_response(jsonify(response_data), 200)
+
+    except Exception as e:
+        db.session.rollback()
+        return make_response(jsonify({'message': 'Error updating webhook with subscriptions', 'error': str(e)}), 500)
 
 @webhooks_bp.route('/def_webhooks', methods=['PUT'])
 @jwt_required()
