@@ -32,9 +32,6 @@ def get_def_webhooks():
 
         if tenant_id:
             query = query.filter_by(tenant_id=tenant_id)
-        elif user_tenant_id != 1:
-            # Fallback (lock out if no ID found for non-admin)
-            query = query.filter(DefWebhook.tenant_id == -1)
         if webhook_name:
             query = query.filter(DefWebhook.webhook_name.ilike(f'%{webhook_name}%'))
         if is_active:
@@ -133,9 +130,6 @@ def create_webhook_with_subscriptions():
             DefWebhookEvent.event_id.in_(normalized_event_ids)
         ).all()
         valid_event_ids = [event.event_id for event in valid_events]
-        invalid_event_ids = [
-            event_id for event_id in normalized_event_ids if event_id not in valid_event_ids
-        ]
         if not valid_event_ids:
             return make_response(jsonify({'message': 'event_ids are invalid'}), 400)
 
@@ -175,11 +169,9 @@ def create_webhook_with_subscriptions():
 
         return make_response(jsonify({
             'message': 'Added successfully',
-            'created_count': len(created_subs),
-            'invalid_event_ids': invalid_event_ids,
             'webhook': new_webhook.json(),
             'subscriptions': [s.json() for s in created_subs]
-        }), 201 if created_subs else 200)
+        }), 201)
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({
@@ -217,9 +209,8 @@ def update_webhook_with_subscriptions():
         webhook.last_update_date = datetime.utcnow()
 
         event_ids = data.get('event_ids')
-        invalid_event_ids = []
-        added_count = 0
-        deleted_count = 0
+        added_ids = []
+        removed_ids = []
 
         if event_ids is not None:
             if not isinstance(event_ids, list):
@@ -231,7 +222,6 @@ def update_webhook_with_subscriptions():
                 DefWebhookEvent.event_id.in_(normalized_event_ids)
             ).all() if normalized_event_ids else []
             valid_event_ids = [event.event_id for event in valid_events]
-            invalid_event_ids = [eid for eid in normalized_event_ids if eid not in valid_event_ids]
 
             if normalized_event_ids and not valid_event_ids:
                 return make_response(jsonify({'message': 'All provided event_ids are invalid'}), 400)
@@ -252,29 +242,28 @@ def update_webhook_with_subscriptions():
                         last_update_date=datetime.utcnow()
                     )
                     db.session.add(new_sub)
-                    added_count += 1
+                    added_ids.append(event_id)
 
             # Delete removed subscriptions
             for event_id, sub in existing_event_ids.items():
                 if event_id not in valid_event_ids:
                     db.session.delete(sub)
-                    deleted_count += 1
+                    removed_ids.append(event_id)
 
         db.session.commit()
 
         current_subs = DefWebhookSubscription.query.filter_by(webhook_id=webhook_id).all()
 
         response_data = {
-            'message': 'Updated successfully',
+            'message': 'Edited successfully',
             'webhook': webhook.json()
         }
         
         if event_ids is not None:
             response_data.update({
                 'subscriptions': [s.json() for s in current_subs],
-                'added_count': added_count,
-                'deleted_count': deleted_count,
-                'invalid_event_ids': invalid_event_ids
+                'added': added_ids,
+                'removed': removed_ids
             })
 
         return make_response(jsonify(response_data), 200)
