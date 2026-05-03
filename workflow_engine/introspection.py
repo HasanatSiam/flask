@@ -43,40 +43,47 @@ def introspect_outputs(script_path):
     Heuristic: find output keys from:
     1. Top-level result = { 'k': ... } 
     2. return { 'k': ... } statements inside functions
-    
+    3. return json.dumps({ 'k': ... }) patterns
+
     Filters out error-related keys (error, err, exception, message) since these
     are typically error responses, not useful data for chaining.
     """
     # Keys to exclude from outputs (error responses, not useful for chaining)
     EXCLUDED_KEYS = {'error', 'err', 'exception', 'message', 'msg'}
-    
+
     keys = []
     if not script_path or not os.path.isfile(script_path):
         return keys
     try:
         content = open(script_path, 'r', encoding='utf-8').read()
-        
+
+        # Key extractor: allows word chars, underscores, and spaces (e.g. "Employee Name")
+        KEY_PATTERN = r"""['"]([\w_ ]+)['"]\s*:"""
+
+        def _extract_keys(body):
+            result_keys = []
+            for k in re.finditer(KEY_PATTERN, body):
+                key = k.group(1).strip()
+                if key.lower() not in EXCLUDED_KEYS:
+                    result_keys.append(key)
+            return result_keys
+
         # Pattern 1: result = { ... }
         m = re.search(r"\bresult\s*=\s*\{([^}]*)\}", content, re.S)
         if m:
-            body = m.group(1)
-            for k in re.finditer(r"['\"](?P<key>[\w_]+)['\"]\s*:", body):
-                key = k.group('key')
-                if key.lower() not in EXCLUDED_KEYS:
-                    keys.append(key)
-        
+            keys.extend(_extract_keys(m.group(1)))
+
         # Pattern 2: return { ... } - find all return dicts
         for m in re.finditer(r"\breturn\s*\{([^}]*)\}", content, re.S):
-            body = m.group(1)
-            for k in re.finditer(r"['\"](?P<key>[\w_]+)['\"]\s*:", body):
-                key = k.group('key')
-                if key.lower() not in EXCLUDED_KEYS:
-                    keys.append(key)
-                
+            keys.extend(_extract_keys(m.group(1)))
+
+        # Pattern 3: json.dumps({ ... }) - catches return json.dumps({...})
+        for m in re.finditer(r"\bjson\.dumps\s*\(\s*\{([^}]*)\}", content, re.S):
+            keys.extend(_extract_keys(m.group(1)))
+
     except Exception:
         pass
     return list(dict.fromkeys(keys))  # unique, preserve order
-
 
 
 def batch_db_defined_inputs(task_names):
@@ -160,16 +167,14 @@ def get_predecessor_outputs(nodes: list, edges: list, target_node_id: str) -> li
         if not script_path or not isinstance(script_path, str): 
             continue
             
-        # Only introspect if looks like a file
-        if script_path.endswith('.py'):
-             out_keys = introspect_outputs(script_path)
-             for k in out_keys:
-                 if k not in seen_fields:
-                     seen_fields.add(k)
-                     fields.append({
-                         'label': k.replace('_', ' ').title(),
-                         'value': k,
-                         'NodeSourceLabel': node.get('data', {}).get('label', 'Unknown Node')
-                     })
+        out_keys = introspect_outputs(script_path)
+        for k in out_keys:
+            if k not in seen_fields:
+                seen_fields.add(k)
+                fields.append({
+                    'label': k.replace('_', ' ').title(),
+                    'value': k,
+                    'NodeSourceLabel': node.get('data', {}).get('label', 'Unknown Node')
+                })
                      
     return fields

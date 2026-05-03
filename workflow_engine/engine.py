@@ -6,6 +6,7 @@ via DefAsyncTask executors.
 """
 
 import logging
+import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 
@@ -312,8 +313,16 @@ class WorkflowEngine:
                     db.session.commit()
                     return
 
-                if result.get('result') and isinstance(result['result'], dict):
-                    context.update(result['result'])
+                step_result = result.get('result')
+                if step_result:
+                    # If result is a JSON string, parse it first
+                    if isinstance(step_result, str):
+                        try:
+                            step_result = json.loads(step_result)
+                        except (ValueError, TypeError):
+                            step_result = None
+                    if isinstance(step_result, dict):
+                        context.update(step_result)
                 
                 # Check if we need to break for Stop node
                 node_type_config = DefProcessNodeType.query.filter_by(shape_name=node.get('data', {}).get('type')).first()
