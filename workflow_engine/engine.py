@@ -241,7 +241,7 @@ class WorkflowEngine:
         if not execution_record:
             raise WorkflowError(f"Execution record not found: {execution_id}")
 
-        context = execution_record.input_data or {}
+        context = dict(execution_record.input_data or {})
         user_id = execution_record.created_by
         
         # Determine stricture source
