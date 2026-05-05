@@ -6,32 +6,58 @@ from flask import request, jsonify, Response, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.auth import role_required
 from executors.extensions import db
-from executors.models import DefProcessExecution, DefProcessExecutionStep
+from executors.models import DefProcessExecution, DefProcessExecutionStep, DefProcess
 from . import workflow_bp
 
 @workflow_bp.route('/workflow/executions', methods=['GET'])
 @jwt_required()
 @role_required()
 def get_workflow_executions():
+    """
+    GET /workflow/executions
+
+    Query params:
+      - def_process_execution_id  : fetch single execution by ID
+      - process_id                : filter by process ID
+      - process_name              : filter by process name (partial, case-insensitive)
+      - page      (default 1)     : pagination page
+      - limit     (default 20)    : results per page
+    """
     try:
-        process_id = request.args.get('process_id')
+        process_id             = request.args.get('process_id')
         def_process_execution_id = request.args.get('def_process_execution_id')
-        
+        process_name           = request.args.get('process_name', '').strip()
+        page                   = request.args.get('page',  1,  type=int)
+        limit                  = request.args.get('limit', 20, type=int)
+
+        # --- Single execution by ID ---
         if def_process_execution_id:
             execution = DefProcessExecution.query.get(def_process_execution_id)
             if not execution:
                 return jsonify({"error": "Execution not found"}), 404
-            # Return as a list for consistency with this endpoint's format
-            return jsonify({"result": [execution.json()]}), 200
+            return jsonify({"result": [execution.json()], "total": 1, "pages": 1, "page": 1}), 200
 
-        if not process_id:
-             return jsonify({"error": "Missing process_id query parameter"}), 400
-             
-        executions = DefProcessExecution.query.filter_by(process_id=process_id)\
-            .order_by(DefProcessExecution.execution_start_date.desc()).all()
-            
-        return jsonify({"result": [e.json() for e in executions]}), 200
-        
+        # --- Build base query ---
+        query = DefProcessExecution.query
+
+        if process_id:
+            query = query.filter(DefProcessExecution.process_id == process_id)
+
+        if process_name:
+            query = query.join(DefProcess, DefProcess.process_id == DefProcessExecution.process_id)\
+                         .filter(DefProcess.process_name.ilike(f'%{process_name}%'))
+
+        query = query.order_by(DefProcessExecution.execution_start_date.desc())
+
+        paginated = query.paginate(page=page, per_page=limit, error_out=False)
+
+        return jsonify({
+            "result": [e.json() for e in paginated.items],
+            "total":  paginated.total,
+            "pages":  paginated.pages,
+            "page":   paginated.page
+        }), 200
+
     except Exception as e:
         return jsonify({"message": "Error fetching executions", "error": str(e)}), 500
 

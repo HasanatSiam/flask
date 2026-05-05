@@ -456,18 +456,18 @@ def run_workflow(process_id):
 @role_required()
 def run_adhoc_workflow():
     """
-    Run an unsaved workflow asynchronously tracking execution history.
-    
-    Does NOT create a DefProcess record.
-    The execution history (DefProcessExecution, DefProcessExecutionStep) will start
-    with process_id=None, but will contain all step details.
-    
+    Run a workflow dynamically (ad-hoc) without requiring a saved process record.
+
+    Optionally accepts a process_id to link the execution to an existing saved workflow.
+    If process_id is omitted, the execution is stored with process_id=None.
+
     Request body:
     {
         "process_structure": {"nodes": [...], "edges": [...]},
-        "context": {"param1": "value1"}
+        "context":           {"param1": "value1"},
+        "process_id":        5   // optional — links execution to a saved workflow
     }
-    
+
     Response:
     {
         "message": "Workflow started",
@@ -482,6 +482,7 @@ def run_adhoc_workflow():
         
         process_structure = data['process_structure']
         context = data.get('context', {})
+        process_id = data.get('process_id')
         user_id = get_jwt_identity()
         
         engine = WorkflowEngine()
@@ -491,9 +492,8 @@ def run_adhoc_workflow():
         if errors:
             return jsonify({"message": "Invalid workflow structure", "errors": errors}), 400
             
-        # 2. Initialize execution without a Process ID (Ad-hoc run)
-        # This creates the DefProcessExecution record to hold history
-        def_process_execution_id = engine.initialize_execution(None, context, user_id)
+        # 2. Initialize execution — link to process if process_id provided
+        def_process_execution_id = engine.initialize_execution(process_id, context, user_id)
         
         # 3. Run the engine (Async) passing the structure explicitly
         app = current_app._get_current_object()
