@@ -161,8 +161,8 @@ class WorkflowEngine:
             }
         
         try:
-            # Execute task with step_context (includes predefined attributes)
-            eager_result = executor.apply(
+            # Execute task via Celery broker (logged in Redis/Flower)
+            async_result = executor.apply_async(
                 args=(
                     task.script_name or '',
                     task.user_task_name,
@@ -172,8 +172,8 @@ class WorkflowEngine:
                 kwargs=step_context
             )
             
-            # Get actual result from EagerResult
-            executor_output = eager_result.get() if hasattr(eager_result, 'get') else eager_result
+            # Wait for worker result; propagate=False returns exceptions as values
+            executor_output = async_result.get(propagate=False)
             
             logger.debug(f"Executor output for {label}: {executor_output}")
 
