@@ -1155,7 +1155,7 @@ class DefProcessExecutionStep(db.Model):
     __table_args__ = {'schema': 'apps'}
     
     def_execution_step_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    def_process_execution_id = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.def_process_execution_id'))
+    def_process_execution_id = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.def_process_execution_id', ondelete='CASCADE'))
     node_id = db.Column(db.String(100))
     node_label = db.Column(db.String(255))
     status = db.Column(db.String(50))
