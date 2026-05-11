@@ -1158,7 +1158,9 @@ class DefProcessExecutionStep(db.Model):
     def_process_execution_id = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.def_process_execution_id', ondelete='CASCADE'))
     node_id = db.Column(db.String(100))
     node_label = db.Column(db.String(255))
+    task_name = db.Column(db.String(255))
     status = db.Column(db.String(50))
+    input_data = db.Column(JSONB)
     result = db.Column(JSONB)
     error_message = db.Column(db.Text)
     execution_start_date = db.Column(db.DateTime(timezone=True), default=func.now())
@@ -1174,7 +1176,9 @@ class DefProcessExecutionStep(db.Model):
             'def_process_execution_id': self.def_process_execution_id,
             'node_id': self.node_id,
             'node_label': self.node_label,
+            'task_name': self.task_name,
             'status': self.status,
+            'input_data': self.input_data,
             'result': self.result,
             'error_message': self.error_message,
             'execution_start_date': self.execution_start_date.isoformat() if self.execution_start_date else None,
