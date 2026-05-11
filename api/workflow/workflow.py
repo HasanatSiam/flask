@@ -375,24 +375,26 @@ def get_required_params():
                             provided_dict[key.upper()] = val
             
             # Find inputs that are NOT satisfied by predecessors
-            for param in defined:
+            for param_meta in defined:
+                param_name = param_meta['name']
+                
                 # Skip if already provided in node attributes (case-insensitive)
-                if param.upper() in provided_dict:
+                if param_name.upper() in provided_dict:
                     continue
                 
                 # Skip if can be auto-filled from predecessor outputs (case-insensitive)
-                if param.upper() in pred_output_keys:
+                if param_name.upper() in pred_output_keys:
                     continue
                 
                 # This input needs user input
-                input_key = param  # Use param name as dedup key
-                if input_key not in seen_inputs:
-                    seen_inputs.add(input_key)
+                if param_name not in seen_inputs:
+                    seen_inputs.add(param_name)
                     workflow_inputs.append({
-                        "name": param,
-                        "type": "string",
+                        "name": param_name,
+                        "type": param_meta.get('type', 'string'),
                         "required": True,
                         "value": "",
+                        "description": param_meta.get('description', ''),
                         "source_task": task_name,
                         "source_label": label
                     })

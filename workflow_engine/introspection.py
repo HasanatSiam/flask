@@ -19,8 +19,7 @@ def introspect_inputs(script_path):
     Return list of global keys read via globals().get('key') in script.
     Only returns parameters WITHOUT default values (truly required inputs).
     
-    - globals().get('key')           -> REQUIRED (returned)
-    - globals().get('key', default)  -> OPTIONAL (skipped)
+    Returns: [{'name': 'key'}, ...]
     """
     keys = []
     if not script_path or not os.path.isfile(script_path):
@@ -28,14 +27,15 @@ def introspect_inputs(script_path):
     try:
         content = open(script_path, 'r', encoding='utf-8').read()
         # Pattern to match globals().get('key') or globals().get('key', default)
-        # Capture the key and check if there's a comma (meaning default exists)
         for m in re.finditer(r"globals\(\)\.get\(\s*['\"](?P<key>[\w_]+)['\"](?P<has_default>\s*,)?", content):
-            # Only include if NO default value (no comma after the key)
             if not m.group('has_default'):
                 keys.append(m.group('key'))
     except Exception:
         pass
-    return list(dict.fromkeys(keys))  # preserve order, unique
+    
+    # Unique names while preserving order
+    unique_names = list(dict.fromkeys(keys))
+    return [{"name": name} for name in unique_names]
 
 
 def introspect_outputs(script_path):
@@ -88,13 +88,12 @@ def introspect_outputs(script_path):
 
 def batch_db_defined_inputs(task_names):
     """
-    Get parameter names for multiple tasks in a single DB query.
-    Returns: { 'task_name': ['param1', 'param2'], ... }
+    Get parameter metadata for multiple tasks in a single DB query.
+    Returns: { 'task_name': [{'name': 'p1', 'type': 'string', 'description': '...'}, ...], ... }
     """
     if not task_names:
         return {}
     
-    # Filter out None and duplicates
     unique_names = list(set(filter(None, task_names)))
     if not unique_names:
         return {}
@@ -105,7 +104,11 @@ def batch_db_defined_inputs(task_names):
         for row in rows:
             if row.task_name not in result:
                 result[row.task_name] = []
-            result[row.task_name].append(row.parameter_name)
+            result[row.task_name].append({
+                "name": row.parameter_name,
+                "type": row.data_type or "string",
+                "description": row.description or ""
+            })
         return result
     except Exception:
         return {}

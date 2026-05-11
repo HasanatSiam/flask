@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 
 from executors.extensions import db
-from executors.models import DefAsyncTask, DefProcess, DefProcessNodeType, DefProcessExecution, DefProcessExecutionStep
+from executors.models import DefAsyncTask, DefProcess, DefProcessNodeType, DefProcessExecution, DefProcessExecutionStep, DefAsyncTaskParam
 
 # Import executors
 from executors import run_script, bash_script, execute_procedure, execute_function, http_request
@@ -148,8 +148,17 @@ class WorkflowEngine:
             return {
                 'status': 'failed',
                 'node_id': node_id,
-                'error': f'Task not found: {step_function}'
+                'error': f'Task not found: {step_function}',
+                'input_data': step_context
             }
+            
+        # --- Strict Parameter Filtering ---
+        expected_params = DefAsyncTaskParam.query.filter_by(task_name=task.task_name).all()
+        
+        strict_context = {}
+        for param in expected_params:
+            if param.parameter_name and param.parameter_name in step_context:
+                strict_context[param.parameter_name] = step_context[param.parameter_name]
         
         # Get executor
         executor = EXECUTORS.get(task.executor)
@@ -157,7 +166,8 @@ class WorkflowEngine:
             return {
                 'status': 'failed',
                 'node_id': node_id,
-                'error': f'Unknown executor: {task.executor}'
+                'error': f'Unknown executor: {task.executor}',
+                'input_data': strict_context
             }
         
         try:
@@ -169,7 +179,7 @@ class WorkflowEngine:
                     task.task_name,
                     None, None, None, None
                 ),
-                kwargs=step_context
+                kwargs=strict_context
             )
             
             # Wait for worker result; propagate=False returns exceptions as values
@@ -191,14 +201,16 @@ class WorkflowEngine:
                 return {
                     'status': 'failed',
                     'node_id': node_id,
-                    'error': error
+                    'error': error,
+                    'input_data': strict_context
                 }
 
             return {
                 'status': 'completed',
                 'node_id': node_id,
                 'task_name': task.task_name,
-                'result': actual_result
+                'result': actual_result,
+                'input_data': strict_context
             }
             
         except Exception as e:
@@ -206,7 +218,8 @@ class WorkflowEngine:
             return {
                 'status': 'failed',
                 'node_id': node_id,
-                'error': str(e)
+                'error': str(e),
+                'input_data': strict_context
             }
     
     def initialize_execution(self, process_id: Optional[int], context: dict = None, user_id: int = None) -> int:
@@ -276,7 +289,9 @@ class WorkflowEngine:
                     def_process_execution_id=execution_record.def_process_execution_id,
                     node_id=node.get('id'),
                     node_label=node.get('data', {}).get('label', node.get('id')),
+                    task_name=node.get('data', {}).get('step_function', ''),
                     status='RUNNING',
+                    input_data=context.copy() if isinstance(context, dict) else context,
                     execution_start_date=step_start_date,
                     created_by=user_id,
                     last_updated_by=user_id
@@ -294,6 +309,8 @@ class WorkflowEngine:
 
                 # Update step record
                 step_record.status = result.get('status')
+                if 'input_data' in result:
+                    step_record.input_data = result.get('input_data')
                 if result.get('status') == 'completed':
                     step_record.result = result.get('result')
                 step_record.error_message = result.get('error')
