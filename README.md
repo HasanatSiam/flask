@@ -146,14 +146,31 @@ The API will be available at `http://localhost:5000`.
 ### 2. Start the Celery Worker
 To process background tasks:
 ```bash
-celery -A executors.celery_app worker --loglevel=info
+celery -A executors:celery_app worker --loglevel=info
 ```
 
 ### 3. Start the Celery Beat (Scheduler)
 To run scheduled tasks:
 ```bash
-celery -A executors.celery_app beat --loglevel=info
+celery -A executors:celery_app beat --loglevel=info
 ```
+
+### Webhook retries (Celery)
+
+Failed webhook deliveries schedule a **per-delivery** Celery task (`redbeat_s.tasks.retry_single_webhook_delivery`) with an `eta` matching `next_retry_date`, so workers do not poll the database every minute.
+
+Beat only runs an **hourly sweeper** (`redbeat_s.tasks.retry_webhooks_task`) for rows that are still `FAILED` and far past `next_retry_date` (e.g. lost broker messages). Tune `SWEEPER_GRACE_SECONDS` and `SWEEPER_BATCH_LIMIT` in [`utils/webhook_service.py`](utils/webhook_service.py) if needed.
+
+**Optional — isolate webhook HTTP work:** add a dedicated queue and consume it explicitly, for example in your Flask/Celery config mapping:
+
+```python
+task_routes={
+    "redbeat_s.tasks.retry_single_webhook_delivery": {"queue": "webhooks"},
+    "redbeat_s.tasks.retry_webhooks_task": {"queue": "webhooks"},
+},
+```
+
+Then start workers with that queue subscribed, e.g. `celery -A executors:celery_app worker -Q celery,webhooks --loglevel=info`.
 
 ## Project Structure
 
