@@ -116,12 +116,15 @@ def create_app() -> Flask:
             # },
             timezone             = "UTC",
             enable_utc           = True,
+            # Workers must import modules that define tasks referenced by beat_schedule / RedBeat.
+            include              = ["redbeat_s.tasks"],
 
             # ── Auto-scheduled tasks (no manual registration needed) ──────────
+            # Webhook retries use per-delivery Celery ETA; this is a rare sweeper only.
             beat_schedule        = {
-                "webhook-retry-every-minute": {
+                "webhook-retry-sweeper": {
                     "task"    : "redbeat_s.tasks.retry_webhooks_task",
-                    "schedule": 60,   # seconds
+                    "schedule": 3600.0,   # seconds (hourly)
                 },
             },
         ),
