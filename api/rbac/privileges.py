@@ -30,6 +30,20 @@ def get_def_privileges():
                 }), 404)
             return make_response(jsonify({"result": record.json()}), 200)
 
+        # Pagination parameters
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            # Return paginated records
+            paginated = DefPrivilege.query.order_by(DefPrivilege.privilege_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [r.json() for r in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
         # Otherwise return all records
         records = DefPrivilege.query.order_by(DefPrivilege.privilege_id.desc()).all()
         return make_response(jsonify({"result": [r.json() for r in records]}), 200)
@@ -117,18 +131,24 @@ def update_privilege():
 @role_required()
 def delete_privilege():
     try:
-        privilege_id = request.args.get("privilege_id", type=int)
-        if privilege_id is None:
+        data = request.get_json()
+        if not data or 'privilege_ids' not in data:
             return make_response(jsonify({
-                "error": "Query parameter 'privilege_id' is required"
+                "error": "Request body with 'privilege_ids' (list) is required"
             }), 400)
-        
-        privilege = DefPrivilege.query.filter_by(privilege_id=privilege_id).first()
 
-        if not privilege:
-            return make_response(jsonify({'error': 'Privilege not found'}), 404)
+        privilege_ids = data.get('privilege_ids')
+        if not isinstance(privilege_ids, list):
+            return make_response(jsonify({'error': 'privilege_ids must be a list'}), 400)
 
-        db.session.delete(privilege)
+        privileges = DefPrivilege.query.filter(DefPrivilege.privilege_id.in_(privilege_ids)).all()
+
+        if not privileges:
+            return make_response(jsonify({'error': 'No privileges found for provided IDs'}), 404)
+
+        for privilege in privileges:
+            db.session.delete(privilege)
+
         db.session.commit()
 
         return make_response(jsonify({'message': 'Deleted successfully'}), 200)
@@ -137,7 +157,7 @@ def delete_privilege():
         db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
-            'message': 'Error deleting privilege'
+            'message': 'Error deleting privileges'
         }), 500)
 
 
