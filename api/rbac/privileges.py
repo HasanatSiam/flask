@@ -20,6 +20,7 @@ from . import rbac_bp
 def get_def_privileges():
     try:
         privilege_id = request.args.get("privilege_id", type=int)
+        privilege_name = request.args.get("privilege_name", type=str)
 
         # Single-record lookup if privilege_id is provided
         if privilege_id is not None:
@@ -30,13 +31,17 @@ def get_def_privileges():
                 }), 404)
             return make_response(jsonify({"result": record.json()}), 200)
 
+        query = DefPrivilege.query
+        if privilege_name:
+            query = query.filter(DefPrivilege.privilege_name.ilike(f'%{privilege_name}%'))
+
         # Pagination parameters
         page = request.args.get('page', type=int)
         limit = request.args.get('limit', type=int)
 
         if page and limit:
             # Return paginated records
-            paginated = DefPrivilege.query.order_by(DefPrivilege.privilege_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+            paginated = query.order_by(DefPrivilege.privilege_id.desc()).paginate(page=page, per_page=limit, error_out=False)
             return make_response(jsonify({
                 "result": [r.json() for r in paginated.items],
                 "total": paginated.total,
@@ -45,7 +50,7 @@ def get_def_privileges():
             }), 200)
 
         # Otherwise return all records
-        records = DefPrivilege.query.order_by(DefPrivilege.privilege_id.desc()).all()
+        records = query.order_by(DefPrivilege.privilege_id.desc()).all()
         return make_response(jsonify({"result": [r.json() for r in records]}), 200)
 
     except Exception as e:

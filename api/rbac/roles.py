@@ -57,6 +57,7 @@ def create_role():
 def get_roles():
     try:
         role_id = request.args.get("role_id", type=int)
+        role_name = request.args.get("role_name", type=str)
 
         # Single-role lookup if role_id is provided
         if role_id is not None:
@@ -67,13 +68,17 @@ def get_roles():
                 }), 404)
             return make_response(jsonify({"result": role.json()}), 200)
 
+        query = DefRoles.query
+        if role_name:
+            query = query.filter(DefRoles.role_name.ilike(f'%{role_name}%'))
+
         # Pagination parameters
         page = request.args.get('page', type=int)
         limit = request.args.get('limit', type=int)
 
         if page and limit:
             # Return paginated roles
-            paginated = DefRoles.query.order_by(DefRoles.role_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+            paginated = query.order_by(DefRoles.role_id.desc()).paginate(page=page, per_page=limit, error_out=False)
             return make_response(jsonify({
                 "result": [r.json() for r in paginated.items],
                 "total": paginated.total,
@@ -82,7 +87,7 @@ def get_roles():
             }), 200)
 
         # Otherwise return all roles
-        roles = DefRoles.query.order_by(DefRoles.role_id.desc()).all()
+        roles = query.order_by(DefRoles.role_id.desc()).all()
         return make_response(jsonify({"result": [r.json() for r in roles]}), 200)
 
     except Exception as e:
