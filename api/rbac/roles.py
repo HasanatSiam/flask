@@ -67,6 +67,20 @@ def get_roles():
                 }), 404)
             return make_response(jsonify({"result": role.json()}), 200)
 
+        # Pagination parameters
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+
+        if page and limit:
+            # Return paginated roles
+            paginated = DefRoles.query.order_by(DefRoles.role_id.desc()).paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [r.json() for r in paginated.items],
+                "total": paginated.total,
+                "pages": paginated.pages,
+                "page": paginated.page
+            }), 200)
+
         # Otherwise return all roles
         roles = DefRoles.query.order_by(DefRoles.role_id.desc()).all()
         return make_response(jsonify({"result": [r.json() for r in roles]}), 200)
@@ -121,18 +135,24 @@ def update_role():
 @role_required()
 def delete_role():
     try:
-        role_id = request.args.get("role_id", type=int)
-        if role_id is None:
+        data = request.get_json()
+        if not data or 'role_ids' not in data:
             return make_response(jsonify({
-                "error": "Query parameter 'role_id' is required"
+                "error": "Request body with 'role_ids' (list) is required"
             }), 400)
 
-        role = DefRoles.query.filter_by(role_id=role_id).first()
+        role_ids = data.get('role_ids')
+        if not isinstance(role_ids, list):
+            return make_response(jsonify({'error': 'role_ids must be a list'}), 400)
 
-        if not role:
-            return make_response(jsonify({'error': 'Role not found'}), 404)
+        roles = DefRoles.query.filter(DefRoles.role_id.in_(role_ids)).all()
 
-        db.session.delete(role)
+        if not roles:
+            return make_response(jsonify({'error': 'No roles found for provided IDs'}), 404)
+
+        for role in roles:
+            db.session.delete(role)
+
         db.session.commit()
 
         return make_response(jsonify({'message': 'Deleted successfully'}), 200)
@@ -141,7 +161,7 @@ def delete_role():
         db.session.rollback()
         return make_response(jsonify({
             'error': str(e),
-            'message': 'Error deleting role'
+            'message': 'Error deleting roles'
         }), 500)
 
 
