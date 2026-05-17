@@ -198,24 +198,29 @@ def delete_tenant():
 @role_required()
 def delete_tenant_and_related():
     try:
-        tenant_id = request.args.get('tenant_id', type=int)
+        data = request.get_json(silent=True)
+        if not data or 'tenant_ids' not in data:
+            return jsonify({"message": "Request body with 'tenant_ids' (list) is required"}), 400
 
-        if not tenant_id:
-            return jsonify({"message": "Missing required query parameter: tenant_id"}), 400
+        tenant_ids = data.get('tenant_ids')
+        if not isinstance(tenant_ids, list):
+            return jsonify({"message": "'tenant_ids' must be a list"}), 400
 
-        tenant = DefTenant.query.filter_by(tenant_id=tenant_id).first()
-        if not tenant:
-            return jsonify({"message": "Tenant not found"}), 404
+        tenants = DefTenant.query.filter(DefTenant.tenant_id.in_(tenant_ids)).all()
+        if not tenants:
+            return jsonify({"message": "No tenants found for provided IDs"}), 404
 
         # Delete related records manually
-        DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).delete()
-        DefJobTitle.query.filter_by(tenant_id=tenant_id).delete()
+        DefTenantEnterpriseSetup.query.filter(DefTenantEnterpriseSetup.tenant_id.in_(tenant_ids)).delete(synchronize_session=False)
+        DefJobTitle.query.filter(DefJobTitle.tenant_id.in_(tenant_ids)).delete(synchronize_session=False)
 
-        db.session.delete(tenant)
+        for tenant in tenants:
+            db.session.delete(tenant)
+            
         db.session.commit()
 
         return jsonify({
-            "message": f"Deleted successfully"
+            "message": "Deleted successfully"
         }), 200
 
     except Exception as e:
