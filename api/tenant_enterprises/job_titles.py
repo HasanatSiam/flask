@@ -158,22 +158,31 @@ def update_job_title():
 @role_required()
 def delete_job_title():
     try:
-        job_title_id = request.args.get('job_title_id', type=int)
-        if not job_title_id:
-            return make_response(jsonify({"message": "Missing query parameter: job_title_id"}), 400)
+        data = request.get_json(silent=True)
+        if not data or 'job_title_ids' not in data:
+            return make_response(jsonify({
+                "message": "Request body with 'job_title_ids' (list) is required"
+            }), 400)
 
-        title = db.session.get(DefJobTitle, job_title_id)
-        if not title:
-            return make_response(jsonify({"message": "Job title not found"}), 404)
+        job_title_ids = data.get('job_title_ids')
+        if not isinstance(job_title_ids, list):
+            return make_response(jsonify({'message': 'job_title_ids must be a list'}), 400)
 
-        db.session.delete(title)
+        titles = DefJobTitle.query.filter(DefJobTitle.job_title_id.in_(job_title_ids)).all()
+
+        if not titles:
+            return make_response(jsonify({'message': 'No job titles found for provided IDs'}), 404)
+
+        for title in titles:
+            db.session.delete(title)
+
         db.session.commit()
         return jsonify({"message": "Deleted successfully"}), 200
 
     except Exception as e:
         db.session.rollback()
         return make_response(jsonify({
-            "message": "Failed to delete job title",
+            "message": "Failed to delete job titles",
             "error": str(e)
         }), 500)
 
