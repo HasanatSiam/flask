@@ -223,13 +223,13 @@ def update_user_granted_roles():
                 DefUserGrantedRole.role_id.in_(to_remove)
             ).delete(synchronize_session=False)
 
+        # Check if super admin is in the FINAL incoming role set
+        is_super_admin_assigned = any(
+            r.role_name.lower() == 'super admin' for r in valid_roles
+        )
+
         # Add new roles
-        is_super_admin_assigned = False
         for rid in to_add:
-            role = DefRoles.query.filter_by(role_id=rid).first()
-            if role and role.role_name.lower() == 'super admin':
-                is_super_admin_assigned = True
-            
             db.session.add(
                 DefUserGrantedRole(
                     user_id=user_id,
@@ -257,6 +257,19 @@ def update_user_granted_roles():
                         last_updated_by=current_user,
                         last_update_date=now
                     ))
+
+        # Revoke all privileges if Super Admin was removed
+        was_super_admin = False
+        for rid in to_remove:
+            role = DefRoles.query.filter_by(role_id=rid).first()
+            if role and role.role_name.lower() == 'super admin':
+                was_super_admin = True
+                break
+
+        if was_super_admin:
+            DefUserGrantedPrivilege.query.filter_by(user_id=user_id).delete(
+                synchronize_session=False
+            )
 
         # Update audit fields for kept roles
         for rid in incoming_role_ids & existing_role_ids:
