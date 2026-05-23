@@ -13,14 +13,14 @@ def get_webhook_deliveries():
     try:
         tenant_id    = request.args.get('tenant_id',    type=int)
         webhook_name = request.args.get('webhook_name', type=str)
-        event_name   = request.args.get('event_name',   type=str)
+        entity_name  = request.args.get('entity_name',  type=str)
         page         = request.args.get('page',         type=int, default=1)
         limit        = request.args.get('limit',        type=int, default=20)
 
         query = db.session.query(
             LogWebhookDelivery,
             DefWebhook.webhook_name,
-            DefWebhookEvent.event_name
+            DefWebhookEvent.entity_name
         ).outerjoin(
             DefWebhook,
             LogWebhookDelivery.webhook_id == DefWebhook.webhook_id
@@ -33,18 +33,18 @@ def get_webhook_deliveries():
             query = query.filter(LogWebhookDelivery.tenant_id == tenant_id)
         if webhook_name:
             query = query.filter(DefWebhook.webhook_name.ilike(f'%{webhook_name}%'))
-        if event_name:
-            query = query.filter(DefWebhookEvent.event_name.ilike(f'%{event_name}%'))
+        if entity_name:
+            query = query.filter(DefWebhookEvent.entity_name.ilike(f'%{entity_name}%'))
 
         paginated = query.order_by(
             LogWebhookDelivery.delivery_id.desc()
         ).paginate(page=page, per_page=limit, error_out=False)
 
         result = []
-        for delivery, joined_webhook_name, joined_event_name in paginated.items:
+        for delivery, joined_webhook_name, joined_entity_name in paginated.items:
             item = delivery.json()
             item['webhook_name'] = joined_webhook_name
-            item['event_name'] = joined_event_name
+            item['entity_name'] = joined_entity_name
             result.append(item)
 
         return make_response(jsonify({
