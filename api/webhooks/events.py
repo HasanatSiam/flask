@@ -4,18 +4,40 @@ from datetime import datetime
 
 from utils.auth import role_required
 from executors.extensions import db
-from executors.models import DefWebhookEvent, DefApiEndpoint, DefPrivilege, DefUser
+from executors.models import DefWebhookEvent, DefApiEndpoint, DefPrivilege, DefUser, DefTenant
 from . import webhooks_bp
+
+@webhooks_bp.route('/def_webhook_events/entities', methods=['GET'])
+@jwt_required()
+# @role_required()
+def get_webhook_event_entities():
+    """Return distinct entity names, optionally filtered by tenant."""
+    try:
+        tenant_id = request.args.get('tenant_id', type=int)
+
+        query = db.session.query(DefWebhookEvent.entity_name).filter(
+            DefWebhookEvent.entity_name.isnot(None)
+        )
+        if tenant_id:
+            query = query.filter(DefWebhookEvent.tenant_id == tenant_id)
+
+        rows = query.distinct().order_by(DefWebhookEvent.entity_name).all()
+        return make_response(jsonify({'result': [r.entity_name for r in rows]}), 200)
+    except Exception as e:
+        return make_response(jsonify({'message': 'Error fetching entities', 'error': str(e)}), 500)
+
 
 @webhooks_bp.route('/def_webhook_events', methods=['GET'])
 @jwt_required()
 # @role_required()
 def get_webhook_events():
     try:
-        event_id = request.args.get('event_id', type=int)
-        tenant_id = request.args.get('tenant_id', type=int)
-        page = request.args.get('page', type=int)
-        limit = request.args.get('limit', type=int)
+        event_id    = request.args.get('event_id',    type=int)
+        tenant_id   = request.args.get('tenant_id',   type=int)
+        entity_name = request.args.get('entity_name', type=str)
+        action_type = request.args.get('action_type', type=str)
+        page        = request.args.get('page',        type=int)
+        limit       = request.args.get('limit',       type=int)
 
         query = db.session.query(
             DefWebhookEvent,
@@ -29,8 +51,11 @@ def get_webhook_events():
             query = query.filter(DefWebhookEvent.tenant_id == tenant_id)
         if event_id:
             query = query.filter(DefWebhookEvent.event_id == event_id)
+        if entity_name:
+            query = query.filter(DefWebhookEvent.entity_name == entity_name)
+        if action_type:
+            query = query.filter(DefWebhookEvent.action_type == action_type.upper())
 
-        # Pagination logic
         total = query.count()
         if page and limit:
             offset = (page - 1) * limit
@@ -71,16 +96,21 @@ def register_business_event():
         user = DefUser.query.get(int(current_user_id))
         tenant_id = user.tenant_id if user else None
 
+        entity_name = data.get('entity_name')
+        action_type = data.get('action_type')
+        if action_type:
+            action_type = action_type.upper()
+
         new_event = DefWebhookEvent(
-            tenant_id       = tenant_id,
-            api_endpoint_id = data.get('api_endpoint_id'),
-            event_name      = data.get('event_name'),
-            event_key       = data.get('event_key'),
-            description     = data.get('description'),
-            created_by      = current_user_id,
-            creation_date   = datetime.utcnow(),
+            tenant_id        = tenant_id,
+            api_endpoint_id  = data.get('api_endpoint_id'),
+            entity_name      = entity_name,
+            action_type      = action_type,
+            description      = data.get('description'),
+            created_by       = current_user_id,
+            creation_date    = datetime.utcnow(),
             last_update_date = datetime.utcnow(),
-            last_updated_by = current_user_id,
+            last_updated_by  = current_user_id,
         )
         db.session.add(new_event)
         db.session.commit()
@@ -108,10 +138,10 @@ def update_business_event():
         # Update allowed fields
         if 'api_endpoint_id' in data:
             event.api_endpoint_id = data.get('api_endpoint_id')
-        if 'event_name' in data:
-            event.event_name = data.get('event_name')
-        if 'event_key' in data:
-            event.event_key = data.get('event_key')
+        if 'entity_name' in data:
+            event.entity_name = data.get('entity_name')
+        if 'action_type' in data:
+            event.action_type = data.get('action_type', '').upper() or None
         if 'description' in data:
             event.description = data.get('description')
             
