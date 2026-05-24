@@ -26,8 +26,10 @@ def Create_Task():
         script_name = request.json.get('script_name')
         script_path = request.json.get('script_path')
         description = request.json.get('description')
-        srs = request.json.get('srs')
-        sf  = request.json.get('sf')
+        srs       = request.json.get('srs')
+        sf        = request.json.get('sf')
+        sf_type   = request.json.get('sf_type')
+        lookup_id = request.json.get('lookup_id')
 
         new_task = DefAsyncTask(
             user_task_name = user_task_name,
@@ -41,6 +43,8 @@ def Create_Task():
             cancelled_yn = 'N',
             srs = srs,
             sf  = sf,
+            sf_type   = sf_type,
+            lookup_id = lookup_id,
             created_by = get_jwt_identity(),
             last_updated_by = get_jwt_identity(),
             creation_date = datetime.utcnow(),
@@ -158,6 +162,10 @@ def Update_Task(task_name):
                 task.srs = request.json.get('srs')
             if 'sf' in request.json:
                 task.sf = request.json.get('sf')
+            if 'sf_type' in request.json:
+                task.sf_type = request.json.get('sf_type')
+            if 'lookup_id' in request.json:
+                task.lookup_id = request.json.get('lookup_id')
             task.last_updated_by = get_jwt_identity()
             task.last_update_date = datetime.utcnow()
 
