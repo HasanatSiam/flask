@@ -1932,3 +1932,33 @@ class DefLookupValue(db.Model):
             'last_updated_by'  : self.last_updated_by,
             'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
         }
+
+
+class VwLookupWithValues(db.Model):
+    __tablename__  = 'vw_lookup_with_values'
+    __table_args__ = {'schema': 'apps'}
+
+    lookup_id        = db.Column(db.Integer, primary_key=True)
+    lookup_code      = db.Column(db.String(100))
+    lookup_name      = db.Column(db.String(255))
+    description      = db.Column(db.Text)
+    active_yn        = db.Column(db.String(1))
+    values           = db.Column(JSONB)
+    created_by       = db.Column(db.Integer)
+    creation_date    = db.Column(db.TIMESTAMP)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP)
+
+    def json(self):
+        return {
+            'lookup_id'        : self.lookup_id,
+            'lookup_code'      : self.lookup_code,
+            'lookup_name'      : self.lookup_name,
+            'description'      : self.description,
+            'active_yn'        : self.active_yn,
+            'values'           : self.values,
+            'created_by'       : self.created_by,
+            'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by'  : self.last_updated_by,
+            'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
+        }
