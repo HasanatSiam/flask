@@ -374,6 +374,8 @@ class DefAsyncTask(db.Model):
     cancelled_yn     = db.Column(db.String(1), default='N')  # Default 'N'
     srs              = db.Column(db.String(1), default='N')  # Default 'N'
     sf               = db.Column(db.String(1), default='N')  # Default 'N'
+    sf_type          = db.Column(db.String(30))
+    lookup_id        = db.Column(db.Integer, db.ForeignKey('apps.def_lookup.lookup_id'))
     created_by       = db.Column(db.Integer)  # User who created the record (optional)
     creation_date    = db.Column(db.TIMESTAMP, default=datetime.utcnow)  # Timestamp of creation
     last_updated_by  = db.Column(db.Integer)  # User who last updated the record (optional)
@@ -393,6 +395,8 @@ class DefAsyncTask(db.Model):
             "cancelled_yn": self.cancelled_yn,
             "srs": self.srs,
             "sf": self.sf,
+            "sf_type": self.sf_type,
+            "lookup_id": self.lookup_id,
             "created_by": self.created_by,
             "creation_date": self.creation_date,
             "last_updated_by": self.last_updated_by,
@@ -1753,8 +1757,8 @@ class DefWebhookEvent(db.Model):
     event_id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
     tenant_id        = db.Column(db.Integer, db.ForeignKey('apps.def_tenants.tenant_id'))
     api_endpoint_id  = db.Column(db.Integer, db.ForeignKey('apps.def_api_endpoints.api_endpoint_id'), nullable=False)
-    event_name       = db.Column(db.String(255), nullable=False)
-    event_key        = db.Column(db.String(128), nullable=False)
+    entity_name      = db.Column(db.String(128))
+    action_type      = db.Column(db.String(16))
     description      = db.Column(db.Text)
     created_by       = db.Column(db.Integer)
     creation_date    = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1766,8 +1770,8 @@ class DefWebhookEvent(db.Model):
             'event_id'         : self.event_id,
             'tenant_id'        : self.tenant_id,
             'api_endpoint_id'  : self.api_endpoint_id,
-            'event_name'       : self.event_name,
-            'event_key'        : self.event_key,
+            'entity_name'      : self.entity_name,
+            'action_type'      : self.action_type,
             'description'      : self.description,
             'created_by'       : self.created_by,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
@@ -1860,6 +1864,69 @@ class DefWebhookSubscriptionV(db.Model):
             'failure_count'    : self.failure_count,
             'max_retries'      : self.max_retries,
             'events'           : self.events or [],
+            'created_by'       : self.created_by,
+            'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by'  : self.last_updated_by,
+            'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
+        }
+
+
+class DefLookup(db.Model):
+    __tablename__  = 'def_lookup'
+    __table_args__ = {'schema': 'apps'}
+
+    lookup_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    lookup_code      = db.Column(db.String(100), nullable=False, unique=True)
+    lookup_name      = db.Column(db.String(255), nullable=False)
+    description      = db.Column(db.Text)
+    active_yn        = db.Column(db.String(1), default='Y')
+    created_by       = db.Column(db.Integer)
+    creation_date    = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            'lookup_id'        : self.lookup_id,
+            'lookup_code'      : self.lookup_code,
+            'lookup_name'      : self.lookup_name,
+            'description'      : self.description,
+            'active_yn'        : self.active_yn,
+            'created_by'       : self.created_by,
+            'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by'  : self.last_updated_by,
+            'last_update_date' : self.last_update_date.isoformat() if self.last_update_date else None,
+        }
+
+
+class DefLookupValue(db.Model):
+    __tablename__  = 'def_lookup_values'
+    __table_args__ = (
+        db.UniqueConstraint('lookup_id', 'value_code', name='def_lookup_values_uk'),
+        {'schema': 'apps'},
+    )
+
+    lookup_value_id  = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    lookup_id        = db.Column(db.Integer, db.ForeignKey('apps.def_lookup.lookup_id'), nullable=False)
+    value_code       = db.Column(db.String(100), nullable=False)
+    value_label      = db.Column(db.String(255), nullable=False)
+    description      = db.Column(db.Text)
+    sort_order       = db.Column(db.Integer, default=1)
+    active_yn        = db.Column(db.String(1), default='Y')
+    created_by       = db.Column(db.Integer)
+    creation_date    = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            'lookup_value_id'  : self.lookup_value_id,
+            'lookup_id'        : self.lookup_id,
+            'value_code'       : self.value_code,
+            'value_label'      : self.value_label,
+            'description'      : self.description,
+            'sort_order'       : self.sort_order,
+            'active_yn'        : self.active_yn,
             'created_by'       : self.created_by,
             'creation_date'    : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by'  : self.last_updated_by,

@@ -169,8 +169,8 @@ def fire(api_endpoint_id: int, payload: dict, tenant_id: int) -> None:
 
                     # 5. Construct Standard Envelope
                     event_payload = {
-                        "event": event.event_name,
-                        "event_key": event.event_key,
+                        "entity_name": event.entity_name,
+                        "action_type": event.action_type,
                         "occurred_at": datetime.utcnow().isoformat() + "Z",
                         "source": "action_service",
                         "data": shaped_data,
