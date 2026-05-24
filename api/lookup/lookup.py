@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import or_
 from utils.auth import role_required
 from executors.extensions import db
-from executors.models import DefLookup, DefLookupValue
+from executors.models import DefLookup, DefLookupValue, VwLookupWithValues
 from . import lookup_bp
 
 
@@ -265,3 +265,51 @@ def create_lookup_with_values():
         return make_response(
             jsonify({"error": str(e), "message": "Error creating lookup with values"}), 500
         )
+
+
+@lookup_bp.route('/lookup_with_values', methods=['GET'])
+@jwt_required()
+# @role_required()
+def get_lookup_with_values():
+    try:
+        lookup_id   = request.args.get('lookup_id', type=int)
+        lookup_code = request.args.get('lookup_code', '').strip()
+        page        = request.args.get('page', type=int)
+        limit       = request.args.get('limit', type=int)
+
+        if lookup_id is not None:
+            record = VwLookupWithValues.query.filter_by(lookup_id=lookup_id).first()
+            if not record:
+                return make_response(jsonify({"error": f"Lookup with id={lookup_id} not found"}), 404)
+            return make_response(jsonify({"result": record.json()}), 200)
+
+        query = VwLookupWithValues.query
+
+        if lookup_code:
+            lookup_code_space = lookup_code.replace('_', ' ')
+            lookup_code_under = lookup_code.replace(' ', '_')
+            query = query.filter(
+                or_(
+                    VwLookupWithValues.lookup_code.ilike(f'%{lookup_code}%'),
+                    VwLookupWithValues.lookup_code.ilike(f'%{lookup_code_space}%'),
+                    VwLookupWithValues.lookup_code.ilike(f'%{lookup_code_under}%'),
+                    VwLookupWithValues.lookup_name.ilike(f'%{lookup_code}%'),
+                )
+            )
+
+        query = query.order_by(VwLookupWithValues.lookup_id.desc())
+
+        if page and limit:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [r.json() for r in paginated.items],
+                "total":  paginated.total,
+                "pages":  paginated.pages,
+                "page":   paginated.page,
+            }), 200)
+
+        records = query.all()
+        return make_response(jsonify({"result": [r.json() for r in records]}), 200)
+
+    except Exception as e:
+        return make_response(jsonify({"error": str(e), "message": "Error fetching lookup with values"}), 500)
