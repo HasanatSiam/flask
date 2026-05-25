@@ -58,7 +58,7 @@ def create_lookup_value():
 
 @lookup_bp.route('/def_lookup_values', methods=['GET'])
 @jwt_required()
-# @role_required()
+@role_required()
 def get_lookup_values():
     try:
         lookup_value_id = request.args.get('lookup_value_id', type=int)
