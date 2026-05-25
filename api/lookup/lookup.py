@@ -133,17 +133,42 @@ def update_lookup():
 @role_required()
 def delete_lookup():
     try:
-        lookup_id = request.args.get('lookup_id', type=int)
-        if lookup_id is None:
-            return make_response(jsonify({"error": "Query parameter 'lookup_id' is required"}), 400)
+        data = request.get_json(silent=True) or {}
+        lookup_ids = data.get('lookup_ids')
 
-        lookup = DefLookup.query.filter_by(lookup_id=lookup_id).first()
-        if not lookup:
-            return make_response(jsonify({"error": f"Lookup with id={lookup_id} not found"}), 404)
+        # Backward compatibility: support query parameter for single ID
+        if not lookup_ids:
+            lookup_id = request.args.get('lookup_id', type=int)
+            if lookup_id is None:
+                return make_response(jsonify({"error": "Query parameter 'lookup_id' or body 'lookup_ids' array is required"}), 400)
+            lookup_ids = [lookup_id]
 
-        db.session.delete(lookup)
+        if not isinstance(lookup_ids, list) or len(lookup_ids) == 0:
+            return make_response(jsonify({"error": "lookup_ids must be a non-empty array"}), 400)
+
+        deleted_count = 0
+        not_found = []
+
+        for lookup_id in lookup_ids:
+            lookup = DefLookup.query.filter_by(lookup_id=lookup_id).first()
+            if lookup:
+                # Delete related lookup values first (FK constraint safety)
+                DefLookupValue.query.filter_by(lookup_id=lookup_id).delete()
+                db.session.delete(lookup)
+                deleted_count += 1
+            else:
+                not_found.append(lookup_id)
+
         db.session.commit()
-        return make_response(jsonify({"message": "Deleted successfully"}), 200)
+
+        if len(lookup_ids) == 1 and deleted_count == 0:
+            return make_response(jsonify({"error": f"Lookup with id={lookup_ids[0]} not found"}), 404)
+
+        return make_response(jsonify({
+            "message": "Deleted successfully",
+            "deleted": deleted_count,
+            "not_found": not_found
+        }), 200)
 
     except Exception as e:
         db.session.rollback()

@@ -136,17 +136,40 @@ def update_lookup_value():
 # @role_required()
 def delete_lookup_value():
     try:
-        lookup_value_id = request.args.get('lookup_value_id', type=int)
-        if lookup_value_id is None:
-            return make_response(jsonify({"error": "Query parameter 'lookup_value_id' is required"}), 400)
+        data = request.get_json(silent=True) or {}
+        lookup_value_ids = data.get('lookup_value_ids')
 
-        value = DefLookupValue.query.filter_by(lookup_value_id=lookup_value_id).first()
-        if not value:
-            return make_response(jsonify({"error": f"Lookup value with id={lookup_value_id} not found"}), 404)
+        # Backward compatibility: support query parameter for single ID
+        if not lookup_value_ids:
+            lookup_value_id = request.args.get('lookup_value_id', type=int)
+            if lookup_value_id is None:
+                return make_response(jsonify({"error": "Query parameter 'lookup_value_id' or body 'lookup_value_ids' array is required"}), 400)
+            lookup_value_ids = [lookup_value_id]
 
-        db.session.delete(value)
+        if not isinstance(lookup_value_ids, list) or len(lookup_value_ids) == 0:
+            return make_response(jsonify({"error": "lookup_value_ids must be a non-empty array"}), 400)
+
+        deleted_count = 0
+        not_found = []
+
+        for lookup_value_id in lookup_value_ids:
+            value = DefLookupValue.query.filter_by(lookup_value_id=lookup_value_id).first()
+            if value:
+                db.session.delete(value)
+                deleted_count += 1
+            else:
+                not_found.append(lookup_value_id)
+
         db.session.commit()
-        return make_response(jsonify({"message": "Deleted successfully"}), 200)
+
+        if len(lookup_value_ids) == 1 and deleted_count == 0:
+            return make_response(jsonify({"error": f"Lookup value with id={lookup_value_ids[0]} not found"}), 404)
+
+        return make_response(jsonify({
+            "message": "Deleted successfully",
+            "deleted": deleted_count,
+            "not_found": not_found
+        }), 200)
 
     except Exception as e:
         db.session.rollback()
