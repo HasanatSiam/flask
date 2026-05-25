@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
-    DefAsyncTask
+    DefAsyncTask, DefLookup, DefLookupValue, VwLookupWithValues
 
 )
 from . import async_task_bp
@@ -30,6 +30,16 @@ def Create_Task():
         sf        = request.json.get('sf')
         sf_type   = request.json.get('sf_type')
         lookup_id = request.json.get('lookup_id')
+
+        if sf == 'Y' and sf_type == 'PREDICTABLE':
+            if not lookup_id:
+                return make_response(
+                    jsonify({"error": "lookup_id is required for sf_type='PREDICTABLE'"}), 400
+                )
+            if not DefLookup.query.filter_by(lookup_id=lookup_id).first():
+                return make_response(
+                    jsonify({"error": f"Lookup with id={lookup_id} not found"}), 400
+                )
 
         new_task = DefAsyncTask(
             user_task_name = user_task_name,
@@ -176,6 +186,60 @@ def Update_Task(task_name):
 
     except Exception as e:
         return make_response(jsonify({"message": "Error editing async Task", "error": str(e)}), 500)
+
+
+@async_task_bp.route('/def_async_tasks/sf_lookup_values/<string:task_name>', methods=['GET'])
+@jwt_required()
+@role_required()
+def get_sf_lookup_values(task_name):
+    try:
+        task = DefAsyncTask.query.filter_by(task_name=task_name).first()
+        if not task:
+            return make_response(
+                jsonify({"error": f"Task '{task_name}' not found"}), 404
+            )
+
+        if task.sf != 'Y' or task.sf_type != 'PREDICTABLE':
+            return make_response(
+                jsonify({"error": f"Task '{task_name}' is not a Predictable SF (sf='Y', sf_type='PREDICTABLE')"}), 400
+            )
+
+        if not task.lookup_id:
+            return make_response(
+                jsonify({"error": f"Task '{task_name}' has no lookup_id configured"}), 400
+            )
+
+        lookup = VwLookupWithValues.query.filter_by(lookup_id=task.lookup_id).first()
+        if not lookup:
+            return make_response(
+                jsonify({"error": f"Lookup id={task.lookup_id} not found"}), 404
+            )
+
+        active_values = sorted(
+            [v for v in (lookup.values or []) if v.get('active_yn') == 'Y'],
+            key=lambda v: v.get('sort_order') or 0
+        )
+
+        return make_response(jsonify({
+            "task_name"   : task.task_name,
+            "sf_type"     : task.sf_type,
+            "lookup_id"   : lookup.lookup_id,
+            "lookup_code" : lookup.lookup_code,
+            "lookup_name" : lookup.lookup_name,
+            "values": [
+                {
+                    "value_code" : v.get('value_code'),
+                    "value_label": v.get('value_label'),
+                    "sort_order" : v.get('sort_order'),
+                }
+                for v in active_values
+            ]
+        }), 200)
+
+    except Exception as e:
+        return make_response(
+            jsonify({"error": str(e), "message": "Error fetching SF lookup values"}), 500
+        )
 
 
 @async_task_bp.route('/Cancel_Task/<string:task_name>', methods=['PUT'])
