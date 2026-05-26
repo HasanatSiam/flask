@@ -334,123 +334,154 @@ def update_lookup_with_values():
         lookup.last_updated_by = get_jwt_identity()
         lookup.last_update_date = datetime.utcnow()
 
-        # ── Update lookup values ──────────────────────────────────────────────
-        values_data = data.get('values', [])
-        now = datetime.utcnow()
+        # ── Upsert lookup values (ID-based, auto-delete omitted IDs) ──────────
+        if 'values' not in data:
+            return make_response(
+                jsonify({"error": "'values' key is required (send [] to delete all)"}), 400
+            )
+
+        values_data = data['values']
+        if not isinstance(values_data, list):
+            return make_response(
+                jsonify({"error": "'values' must be an array"}), 400
+            )
+
+        # ── Max-3 guard ───────────────────────────────────────────────────────
+        if len(values_data) > 3:
+            return make_response(
+                jsonify({"error": "A lookup may have at most 3 values (existing + new combined)"}), 400
+            )
+
+        now  = datetime.utcnow()
         user = get_jwt_identity()
 
-        # Fetch existing values for this lookup
+        # ── Load all existing DB rows for this lookup ─────────────────────────
         existing_values = {
             v.lookup_value_id: v
             for v in DefLookupValue.query.filter_by(lookup_id=lookup_id).all()
         }
-        existing_by_code = {
-            v.value_code: v for v in existing_values.values()
-        }
+        existing_by_code = {v.value_code: v for v in existing_values.values()}
 
-        values_updated = 0
-        values_created = 0
+        # ── Validation pass ───────────────────────────────────────────────────
         seen_codes = set()
 
         for idx, v in enumerate(values_data):
-            value_id = v.get('lookup_value_id')
-            value_code_raw = v.get('value_code')
-            value_code = (value_code_raw or '').strip()
+            value_id    = v.get('lookup_value_id')
+            value_code  = (v.get('value_code') or '').strip()
             value_label = (v.get('value_label') or '').strip()
 
-            # Determine if this is an update or create
-            is_update = value_id and value_id in existing_values
-
-            if is_update:
-                # For updates: value_label is required, value_code is optional
+            if value_id is not None:
+                # Must belong to this lookup
+                if value_id not in existing_values:
+                    return make_response(
+                        jsonify({
+                            "error"  : f"values[{idx}]: lookup_value_id={value_id} not found for this lookup",
+                            "message": "Validation failed — nothing was saved"
+                        }), 400
+                    )
+                # value_label required for updates
                 if not value_label:
-                    db.session.rollback()
                     return make_response(
                         jsonify({
-                            "error": f"values[{idx}]: value_label is required",
+                            "error"  : f"values[{idx}]: value_label is required",
                             "message": "Validation failed — nothing was saved"
                         }), 400
                     )
-                # Use existing value_code if not provided
-                existing_val = existing_values[value_id]
+                # Fall back to the stored value_code when not supplied
                 if not value_code:
-                    value_code = existing_val.value_code
+                    value_code = existing_values[value_id].value_code
             else:
-                # For creates: both value_code and value_label are required
+                # New row: both value_code and value_label required
                 if not value_code or not value_label:
-                    db.session.rollback()
                     return make_response(
                         jsonify({
-                            "error": f"values[{idx}]: value_code and value_label are required",
+                            "error"  : f"values[{idx}]: value_code and value_label are required for new values",
                             "message": "Validation failed — nothing was saved"
                         }), 400
                     )
 
-            # Check for duplicate value_code in request
             if value_code in seen_codes:
-                db.session.rollback()
                 return make_response(
                     jsonify({
-                        "error": f"values[{idx}]: duplicate value_code '{value_code}' in request",
+                        "error"  : f"values[{idx}]: duplicate value_code '{value_code}' in request",
                         "message": "Validation failed — nothing was saved"
                     }), 400
                 )
             seen_codes.add(value_code)
 
-            if is_update:
-                # Update existing value
-                existing_val = existing_values[value_id]
+        # ── Determine which existing rows to delete ───────────────────────────
+        sent_ids   = {v['lookup_value_id'] for v in values_data if v.get('lookup_value_id') is not None}
+        ids_to_del = set(existing_values.keys()) - sent_ids
 
-                # Check if new value_code conflicts with another existing value
-                if value_code != existing_val.value_code and value_code in existing_by_code:
+        values_deleted = 0
+        for del_id in ids_to_del:
+            db.session.delete(existing_values[del_id])
+            del existing_by_code[existing_values[del_id].value_code]
+            values_deleted += 1
+
+        # ── Apply upserts ─────────────────────────────────────────────────────
+        values_updated = 0
+        values_created = 0
+
+        for idx, v in enumerate(values_data):
+            value_id    = v.get('lookup_value_id')
+            value_code  = (v.get('value_code') or '').strip()
+            value_label = (v.get('value_label') or '').strip()
+
+            if value_id is not None:
+                # UPDATE
+                row = existing_values[value_id]
+                if not value_code:
+                    value_code = row.value_code
+
+                # Conflict check: new code clashes with a *different* kept row
+                if value_code != row.value_code and value_code in existing_by_code:
                     db.session.rollback()
                     return make_response(
                         jsonify({
-                            "error": f"values[{idx}]: value_code '{value_code}' already exists for this lookup",
+                            "error"  : f"values[{idx}]: value_code '{value_code}' already exists for this lookup",
                             "message": "Validation failed — nothing was saved"
                         }), 409
                     )
 
-                old_value_code = existing_val.value_code
-                existing_val.value_code = value_code
-                existing_val.value_label = value_label
+                old_code = row.value_code
+                row.value_code  = value_code
+                row.value_label = value_label
                 if 'description' in v:
-                    existing_val.description = v.get('description')
-                existing_val.sort_order = v.get('sort_order', idx + 1)
+                    row.description = v.get('description')
+                row.sort_order = v.get('sort_order', idx + 1)
                 if 'active_yn' in v:
-                    existing_val.active_yn = v.get('active_yn')
-                existing_val.last_updated_by = user
-                existing_val.last_update_date = now
+                    row.active_yn = v.get('active_yn')
+                row.last_updated_by  = user
+                row.last_update_date = now
 
-                # Update tracking dict if code changed
-                if value_code != old_value_code:
-                    del existing_by_code[old_value_code]
-                    existing_by_code[value_code] = existing_val
+                if value_code != old_code:
+                    del existing_by_code[old_code]
+                    existing_by_code[value_code] = row
 
                 values_updated += 1
             else:
-                # Check if value_code already exists
+                # CREATE — check value_code not already present in kept/updated rows
                 if value_code in existing_by_code:
                     db.session.rollback()
                     return make_response(
                         jsonify({
-                            "error": f"values[{idx}]: value_code '{value_code}' already exists for this lookup",
+                            "error"  : f"values[{idx}]: value_code '{value_code}' already exists for this lookup",
                             "message": "Validation failed — nothing was saved"
                         }), 409
                     )
 
-                # Create new value
                 new_val = DefLookupValue(
-                    lookup_id=lookup_id,
-                    value_code=value_code,
-                    value_label=value_label,
-                    description=v.get('description'),
-                    sort_order=v.get('sort_order', idx + 1),
-                    active_yn=v.get('active_yn', 'Y'),
-                    created_by=user,
-                    creation_date=now,
-                    last_updated_by=user,
-                    last_update_date=now,
+                    lookup_id        = lookup_id,
+                    value_code       = value_code,
+                    value_label      = value_label,
+                    description      = v.get('description'),
+                    sort_order       = v.get('sort_order', idx + 1),
+                    active_yn        = v.get('active_yn', 'Y'),
+                    created_by       = user,
+                    creation_date    = now,
+                    last_updated_by  = user,
+                    last_update_date = now,
                 )
                 db.session.add(new_val)
                 existing_by_code[value_code] = new_val
@@ -460,10 +491,11 @@ def update_lookup_with_values():
 
         return make_response(
             jsonify({
-                "message": "Edited successfully",
-                "lookup_id": lookup.lookup_id,
+                "message"       : "Edited successfully",
+                "lookup_id"     : lookup.lookup_id,
                 "values_updated": values_updated,
                 "values_created": values_created,
+                "values_deleted": values_deleted,
             }), 200
         )
 
