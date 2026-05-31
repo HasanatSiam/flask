@@ -19,21 +19,6 @@ from executors import run_script, bash_script, execute_procedure, execute_functi
 logger = logging.getLogger(__name__)
 
 
-# Safe comparison operators for decision nodes
-SAFE_OPERATORS = {
-    '==':           lambda a, b: str(a).strip().lower() == str(b).strip().lower(),
-    '!=':           lambda a, b: str(a).strip().lower() != str(b).strip().lower(),
-    '>':            lambda a, b: float(a) > float(b),
-    '>=':           lambda a, b: float(a) >= float(b),
-    '<':            lambda a, b: float(a) < float(b),
-    '<=':           lambda a, b: float(a) <= float(b),
-    'contains':     lambda a, b: str(b).lower() in str(a).lower(),
-    'not_contains': lambda a, b: str(b).lower() not in str(a).lower(),
-    'is_empty':     lambda a, b: not a,
-    'is_not_empty': lambda a, b: bool(a),
-}
-
-
 def normalize_boolean(val: Any) -> Any:
     """Normalize truthy/falsy values to standard booleans if possible."""
     if isinstance(val, bool):
@@ -252,7 +237,6 @@ class WorkflowEngine:
             process_id=process_id,  # Can be None
             execution_status='RUNNING',
             input_data=context or {},
-            execution_start_date=datetime.utcnow(),
             created_by=user_id,
             last_updated_by=user_id
         )
@@ -300,7 +284,6 @@ class WorkflowEngine:
                 node = current_nodes.pop(0)
                 
                 # Create step record (RUNNING)
-                step_start_date = datetime.utcnow()
                 step_record = DefProcessExecutionStep(
                     def_process_execution_id=execution_record.def_process_execution_id,
                     node_id=node.get('id'),
@@ -308,7 +291,6 @@ class WorkflowEngine:
                     task_name=node.get('data', {}).get('step_function', ''),
                     status='RUNNING',
                     input_data=context.copy() if isinstance(context, dict) else context,
-                    execution_start_date=step_start_date,
                     created_by=user_id,
                     last_updated_by=user_id
                 )
@@ -333,9 +315,7 @@ class WorkflowEngine:
                 step_record.execution_end_date = step_end_date
                 
                 db.session.commit()
-            
 
-                
                 if on_task_complete:
                     on_task_complete(result)
                 
@@ -362,7 +342,7 @@ class WorkflowEngine:
                     else:
                         # Normalize and store simple results
                         norm_val = normalize_boolean(step_result)
-                        context['last_result'] = norm_val
+                        context['predictable_result'] = norm_val
                         context[f"{node.get('id')}_result"] = norm_val
                 
                 # Check if we need to break for Stop node
@@ -409,58 +389,18 @@ class WorkflowEngine:
 
 
 
-    def _evaluate_node_condition(self, field: str, operator: str, value: str, context: dict) -> str:
-        """
-        Evaluate a node-level binary condition against the execution context.
-
-        Returns:
-            'true'    - operator evaluated cleanly and result is True
-            'false'   - operator evaluated cleanly and result is False
-            'default' - field missing, unknown operator, or type mismatch
-        """
-        if field not in context:
-            logger.debug(f"Binary condition: field '{field}' not in context -> default")
-            return 'default'
-
-        op_fn = SAFE_OPERATORS.get(operator)
-        if not op_fn:
-            logger.debug(f"Binary condition: unknown operator '{operator}' -> default")
-            return 'default'
-
-        field_val = context.get(field)
-        norm_field_val = normalize_boolean(field_val)
-        norm_target_val = normalize_boolean(value)
-
-        if norm_field_val is None:
-            norm_field_val = ''
-
-        try:
-            if isinstance(norm_field_val, bool) and isinstance(norm_target_val, bool):
-                if operator == '==':
-                    result = norm_field_val == norm_target_val
-                elif operator == '!=':
-                    result = norm_field_val != norm_target_val
-                else:
-                    return 'default'
-            else:
-                result = op_fn(norm_field_val, norm_target_val)
-            return 'true' if result else 'false'
-        except (ValueError, TypeError):
-            logger.debug(f"Binary condition: type mismatch for field '{field}' -> default")
-            return 'default'
-
     def _evaluate_decision(self, node: dict, context: dict) -> str:
         """
         Evaluate a decision (GATEWAY) node and return the target node ID.
 
-        Mode detection (by key present in node.data):
-          'condition'    -> Binary mode   : evaluates field+operator+value -> true/false/default
-          'switch_field' -> Switch/case   : reads field value, matches against edge case_value
-          neither        -> WorkflowError : node is misconfigured
+        Routing is always based on the node's step_function result (Predictable SF mode).
+        The task ran in _execute_step and stored its scalar output in context['predictable_result'].
+        Each outgoing edge carries a lookup_value matching a def_lookup_values.value_code.
+        The first edge whose lookup_value matches predictable_result (case-insensitive) is followed.
 
-        Edge routing priority (both modes):
-          1. Edge whose branch/case_value matches the outcome
-          2. Edge marked is_default=true  (catch-all fallback)
+        Edge routing priority:
+          1. Edge whose lookup_value matches predictable_result (case-insensitive)
+          2. Edge marked is_default=True  (catch-all fallback)
           3. edges[0]                     (last-resort robustness)
           4. No edges at all              -> raise WorkflowError
         """
@@ -471,54 +411,22 @@ class WorkflowEngine:
         if not edges:
             raise WorkflowError(f"Decision node '{label}' has no outgoing edges")
 
-        # --- MODE 1: Binary ---
-        if 'condition' in data:
-            condition = data['condition'] or {}
-            field = condition.get('field', '')
-            operator = condition.get('operator', '')
-            value = condition.get('value', '')
+        actual_val = str(context.get('predictable_result', '')).strip().lower()
+        logger.debug(f"Decision '{label}': predictable_result={actual_val!r}")
 
-            outcome = self._evaluate_node_condition(field, operator, value, context)
-            logger.debug(f"Binary decision '{label}': {field} {operator} {value!r} -> {outcome}")
+        default_edge = None
+        for edge in edges:
+            edge_data = edge.get('data') or {}
+            if edge_data.get('is_default'):
+                default_edge = edge
+                continue
+            lookup_val = str(edge_data.get('lookup_value', '')).strip().lower()
+            if lookup_val and lookup_val == actual_val:
+                return edge['target']
 
-            default_edge = None
-            for edge in edges:
-                edge_data = edge.get('data') or {}
-                if edge_data.get('is_default'):
-                    default_edge = edge
-                    continue
-                if str(edge_data.get('branch', '')).strip().lower() == outcome:
-                    return edge['target']
-
-            if default_edge:
-                return default_edge['target']
-            return edges[0]['target']
-
-        # --- MODE 2: Switch/case ---
-        if 'switch_field' in data:
-            switch_field = data['switch_field']
-            actual_val = str(context.get(switch_field, '')).strip().lower()
-            logger.debug(f"Switch/case decision '{label}': {switch_field}={actual_val!r}")
-
-            default_edge = None
-            for edge in edges:
-                edge_data = edge.get('data') or {}
-                if edge_data.get('is_default'):
-                    default_edge = edge
-                    continue
-                case_val = str(edge_data.get('case_value', '')).strip().lower()
-                if case_val and case_val == actual_val:
-                    return edge['target']
-
-            if default_edge:
-                return default_edge['target']
-            return edges[0]['target']
-
-        # --- NEITHER: misconfigured ---
-        raise WorkflowError(
-            f"Decision node '{label}' must have 'condition' (binary mode) "
-            f"or 'switch_field' (switch/case mode) in its data"
-        )
+        if default_edge:
+            return default_edge['target']
+        return edges[0]['target']
 
     def run(self, process_id: int, context: dict = None, user_id: int = None,
             on_task_complete: Callable[[dict], None] = None) -> dict:
