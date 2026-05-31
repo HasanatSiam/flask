@@ -159,6 +159,21 @@ def Update_Task(task_name):
     try:
         task = DefAsyncTask.query.filter_by(task_name=task_name).first()
         if task:
+            # Extract request values if provided, otherwise fallback to current values
+            sf = request.json.get('sf') if 'sf' in request.json else task.sf
+            sf_type = request.json.get('sf_type') if 'sf_type' in request.json else task.sf_type
+            lookup_id = request.json.get('lookup_id') if 'lookup_id' in request.json else task.lookup_id
+
+            if sf == 'Y' and sf_type == 'PREDICTABLE':
+                if not lookup_id:
+                    return make_response(
+                        jsonify({"error": "lookup_id is required for sf_type='PREDICTABLE'"}), 400
+                    )
+                if not DefLookup.query.filter_by(lookup_id=lookup_id).first():
+                    return make_response(
+                        jsonify({"error": f"Lookup with id={lookup_id} not found"}), 400
+                    )
+
             # Only update fields that are provided in the request
             if 'user_task_name' in request.json:
                 task.user_task_name = request.json.get('user_task_name')
@@ -171,11 +186,11 @@ def Update_Task(task_name):
             if 'srs' in request.json:
                 task.srs = request.json.get('srs')
             if 'sf' in request.json:
-                task.sf = request.json.get('sf')
+                task.sf = sf
             if 'sf_type' in request.json:
-                task.sf_type = request.json.get('sf_type')
+                task.sf_type = sf_type
             if 'lookup_id' in request.json:
-                task.lookup_id = request.json.get('lookup_id')
+                task.lookup_id = lookup_id
             task.last_updated_by = get_jwt_identity()
             task.last_update_date = datetime.utcnow()
 
