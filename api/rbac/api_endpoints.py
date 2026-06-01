@@ -23,6 +23,8 @@ from . import rbac_bp
 def create_api_endpoint():
     try:
         api_endpoint = request.json.get('api_endpoint')
+        api_name = request.json.get('api_name')
+        parameters = request.json.get('parameters')
         parameter1 = request.json.get('parameter1')
         parameter2 = request.json.get('parameter2')
         method = request.json.get('method')
@@ -34,6 +36,8 @@ def create_api_endpoint():
 
         new_api = DefApiEndpoint(
             api_endpoint=api_endpoint,
+            api_name=api_name,
+            parameters=parameters,
             parameter1=parameter1,
             parameter2=parameter2,
             method=method,
@@ -88,7 +92,10 @@ def get_api_endpoints():
                 or_(
                     DefApiEndpoint.api_endpoint.ilike(f'%{search_term}%'),
                     DefApiEndpoint.api_endpoint.ilike(f'%{search_underscore}%'),
-                    DefApiEndpoint.api_endpoint.ilike(f'%{search_space}%')
+                    DefApiEndpoint.api_endpoint.ilike(f'%{search_space}%'),
+                    DefApiEndpoint.api_name.ilike(f'%{search_term}%'),
+                    DefApiEndpoint.api_name.ilike(f'%{search_underscore}%'),
+                    DefApiEndpoint.api_name.ilike(f'%{search_space}%')
                 )
             )
 
@@ -136,6 +143,8 @@ def update_api_endpoint():
             return make_response(jsonify({'error': 'API endpoint not found'}), 404)
 
         row.api_endpoint = request.json.get('api_endpoint', row.api_endpoint)
+        row.api_name = request.json.get('api_name', row.api_name)
+        row.parameters = request.json.get('parameters', row.parameters)
         row.parameter1 = request.json.get('parameter1', row.parameter1)
         row.parameter2 = request.json.get('parameter2', row.parameter2)
         row.method = request.json.get('method', row.method)

@@ -1508,8 +1508,8 @@ class DefApiEndpoint(db.Model):
 
     api_endpoint_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     api_endpoint = db.Column(db.Text)
-    parameter1 = db.Column(db.Text)
-    parameter2 = db.Column(db.Text)
+    api_name = db.Column(db.Text)
+    parameters = db.Column(db.JSON)
     method = db.Column(db.Text)
     privilege_id = db.Column(db.Integer, db.ForeignKey('apps.def_privileges.privilege_id'))
     created_by = db.Column(db.Integer)
@@ -1521,8 +1521,8 @@ class DefApiEndpoint(db.Model):
         return {
             'api_endpoint_id': self.api_endpoint_id,
             'api_endpoint': self.api_endpoint,
-            'parameter1': self.parameter1,
-            'parameter2': self.parameter2,
+            'api_name': self.api_name,
+            'parameters': self.parameters,
             'method': self.method,
             'privilege_id': self.privilege_id,
             'created_by': self.created_by,
