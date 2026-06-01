@@ -25,8 +25,6 @@ def create_api_endpoint():
         api_endpoint = request.json.get('api_endpoint')
         api_name = request.json.get('api_name')
         parameters = request.json.get('parameters')
-        parameter1 = request.json.get('parameter1')
-        parameter2 = request.json.get('parameter2')
         method = request.json.get('method')
         privilege_id = request.json.get('privilege_id')
 
@@ -38,8 +36,6 @@ def create_api_endpoint():
             api_endpoint=api_endpoint,
             api_name=api_name,
             parameters=parameters,
-            parameter1=parameter1,
-            parameter2=parameter2,
             method=method,
             privilege_id=privilege_id,
             created_by     = get_jwt_identity(),
@@ -145,8 +141,6 @@ def update_api_endpoint():
         row.api_endpoint = request.json.get('api_endpoint', row.api_endpoint)
         row.api_name = request.json.get('api_name', row.api_name)
         row.parameters = request.json.get('parameters', row.parameters)
-        row.parameter1 = request.json.get('parameter1', row.parameter1)
-        row.parameter2 = request.json.get('parameter2', row.parameter2)
         row.method = request.json.get('method', row.method)
 
         privilege_id = request.json.get('privilege_id', row.privilege_id)
