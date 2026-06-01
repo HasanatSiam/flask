@@ -19,7 +19,7 @@ from . import rbac_bp
 
 @rbac_bp.route('/def_api_endpoints', methods=['POST'])
 @jwt_required()
-# @role_required()
+@role_required()
 def create_api_endpoint():
     try:
         api_endpoint = request.json.get('api_endpoint')
@@ -62,7 +62,7 @@ def create_api_endpoint():
 
 @rbac_bp.route('/def_api_endpoints', methods=['GET'])
 @jwt_required()
-# @role_required()
+@role_required()
 def get_api_endpoints():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
@@ -123,7 +123,7 @@ def get_api_endpoints():
     
 @rbac_bp.route('/def_api_endpoints', methods=['PUT'])
 @jwt_required()
-# @role_required()
+@role_required()
 def update_api_endpoint():
     try:
         api_endpoint_id = request.args.get("api_endpoint_id", type=int)
