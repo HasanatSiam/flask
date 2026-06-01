@@ -1500,6 +1500,8 @@ class DefApiEndpoint(db.Model):
 
     api_endpoint_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     api_endpoint = db.Column(db.Text)
+    api_name = db.Column(db.Text)
+    parameters = db.Column(db.JSON)
     parameter1 = db.Column(db.Text)
     parameter2 = db.Column(db.Text)
     method = db.Column(db.Text)
@@ -1513,6 +1515,8 @@ class DefApiEndpoint(db.Model):
         return {
             'api_endpoint_id': self.api_endpoint_id,
             'api_endpoint': self.api_endpoint,
+            'api_name': self.api_name,
+            'parameters': self.parameters,
             'parameter1': self.parameter1,
             'parameter2': self.parameter2,
             'method': self.method,
