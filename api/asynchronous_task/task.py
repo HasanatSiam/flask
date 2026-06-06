@@ -73,12 +73,53 @@ def Create_Task():
 @async_task_bp.route('/def_async_tasks', methods=['GET'])
 @jwt_required()
 @role_required()
-def Show_Tasks():
+def get_async_tasks():
     try:
-        tasks = DefAsyncTask.query.order_by(DefAsyncTask.def_task_id.desc()).all()
-        return make_response(jsonify([task.json() for task in tasks]))
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', type=int)
+        search_query = request.args.get('user_task_name', '').strip().lower()
+        task_name = request.args.get('task_name')
+        def_task_id = request.args.get('def_task_id')
+
+        query = DefAsyncTask.query
+
+        if def_task_id:
+            query = query.filter_by(def_task_id=def_task_id)
+        if task_name:
+            query = query.filter_by(task_name=task_name)
+
+        if search_query:
+            search_underscore = search_query.replace(' ', '_')
+            search_space = search_query.replace('_', ' ')
+            query = query.filter(or_(
+                DefAsyncTask.user_task_name.ilike(f'%{search_query}%'),
+                DefAsyncTask.user_task_name.ilike(f'%{search_underscore}%'),
+                DefAsyncTask.user_task_name.ilike(f'%{search_space}%')
+            ))
+
+        query = query.order_by(DefAsyncTask.def_task_id.desc())
+
+        if page is not None and limit is not None:
+            paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            return make_response(jsonify({
+                "result": [task.json() for task in paginated.items],
+                "total": paginated.total,
+                "pages": 1 if paginated.total == 0 else paginated.pages,
+                "page":  1 if paginated.total == 0 else paginated.page
+            }), 200)
+        
+        # If no pagination is provided but they request a specific task, return the single object to keep old behavior
+        if (task_name or def_task_id) and not search_query:
+            task = query.first()
+            if not task:
+                return make_response(jsonify({"message": "Task not found"}), 404)
+            return make_response(jsonify(task.json()), 200)
+
+        tasks = query.all()
+        return make_response(jsonify({"result": [task.json() for task in tasks]}), 200)
+
     except Exception as e:
-        return make_response(jsonify({"message": "Error getting async Tasks", "error": str(e)}), 500)
+        return make_response(jsonify({"message": "Error fetching tasks", "error": str(e)}), 500)
 
 
 @async_task_bp.route('/def_async_tasks/v1', methods=['GET'])
@@ -88,68 +129,6 @@ def Show_Tasks_v1():
         return make_response(jsonify([task.json() for task in tasks]))
     except Exception as e:
         return make_response(jsonify({"message": "Error getting async Tasks", "error": str(e)}), 500)
-
-
-@async_task_bp.route('/def_async_tasks/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-@role_required()
-def Show_Tasks_Paginated(page, limit):
-    try:
-        tasks = DefAsyncTask.query.order_by(DefAsyncTask.creation_date.desc())
-        paginated = tasks.paginate(page=page, per_page=limit, error_out=False)
-
-        return make_response(jsonify({
-            "items": [model.json() for model in paginated.items],
-            "total": paginated.total,
-            "pages": paginated.pages,
-            "page":  1 if paginated.total == 0 else paginated.page
-        }), 200)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error getting async Tasks", "error": str(e)}), 500)
-
-
-@async_task_bp.route('/def_async_tasks/search/<int:page>/<int:limit>', methods=['GET'])
-@jwt_required()
-@role_required()
-def def_async_tasks_show_tasks(page, limit):
-    try:
-        search_query = request.args.get('user_task_name', '').strip().lower()
-        search_underscore = search_query.replace(' ', '_')
-        search_space = search_query.replace('_', ' ')
-        query = DefAsyncTask.query
-        if search_query:
-            
-            query = query.filter(or_(
-                DefAsyncTask.user_task_name.ilike(f'%{search_query}%'),
-                DefAsyncTask.user_task_name.ilike(f'%{search_underscore}%'),
-                DefAsyncTask.user_task_name.ilike(f'%{search_space}%')
-            ))
-        paginated = query.order_by(DefAsyncTask.def_task_id.desc()).paginate(page=page, per_page=limit, error_out=False)
-        return make_response(jsonify({
-            "items": [task.json() for task in paginated.items],
-            "total": paginated.total,
-            "pages": 1 if paginated.total == 0 else paginated.pages,
-            "page":  paginated.page
-        }), 200)
-    except Exception as e:
-        return make_response(jsonify({"message": "Error fetching tasks", "error": str(e)}), 500)
-
-
-
-@async_task_bp.route('/Show_Task/<task_name>', methods=['GET'])
-@jwt_required()
-@role_required()
-def Show_Task(task_name):
-    try:
-        task = DefAsyncTask.query.filter_by(task_name=task_name).first()
-
-        if not task:
-            return {"message": f"Task with name '{task_name}' not found"}, 404
-
-        return make_response(jsonify(task.json()), 200)
-
-    except Exception as e:
-        return make_response(jsonify({"message": "Error getting the task", "error": str(e)}), 500)
 
 
 @async_task_bp.route('/Update_Task/<string:task_name>', methods=['PUT'])
