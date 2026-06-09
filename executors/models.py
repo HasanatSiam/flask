@@ -431,6 +431,46 @@ class DefAsyncTaskParam(db.Model):
         }
 
 
+class DefTaskGroup(db.Model):
+    __tablename__ = 'def_task_groups'
+
+    group_id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    group_name       = db.Column(db.String(100), nullable=False, unique=True)
+    description      = db.Column(db.String(255))
+    created_by       = db.Column(db.Integer)
+    creation_date    = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def json(self):
+        return {
+            "group_id":        self.group_id,
+            "group_name":      self.group_name,
+            "description":     self.description,
+            "created_by":      self.created_by,
+            "creation_date":   self.creation_date,
+            "last_updated_by": self.last_updated_by,
+            "last_update_date": self.last_update_date,
+        }
+
+
+class DefTaskGroupMember(db.Model):
+    __tablename__ = 'def_task_group_members'
+
+    group_id      = db.Column(db.Integer, db.ForeignKey('def_task_groups.group_id',    ondelete='CASCADE'), primary_key=True)
+    def_task_id   = db.Column(db.Integer, db.ForeignKey('def_async_tasks.def_task_id', ondelete='CASCADE'), primary_key=True)
+    created_by    = db.Column(db.Integer)
+    creation_date = db.Column(db.TIMESTAMP, default=datetime.utcnow)
+
+    def json(self):
+        return {
+            "group_id":      self.group_id,
+            "def_task_id":   self.def_task_id,
+            "created_by":    self.created_by,
+            "creation_date": self.creation_date,
+        }
+
+
 class DefAsyncTaskSchedule(db.Model):
     __tablename__ = 'def_async_task_schedules'
 

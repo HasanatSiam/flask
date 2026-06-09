@@ -6,8 +6,8 @@ from sqlalchemy import or_
 from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
-    DefAsyncTask, DefLookup, DefLookupValue, VwLookupWithValues
-
+    DefAsyncTask, DefLookup, DefLookupValue, VwLookupWithValues,
+    DefTaskGroup, DefTaskGroupMember
 )
 from . import async_task_bp
 
@@ -18,18 +18,19 @@ from . import async_task_bp
 @role_required()
 def Create_Task():
     try:
-        user_task_name = request.json.get('user_task_name')
-        task_name = request.json.get('task_name')
-        execution_method = request.json.get('execution_method')
+        user_task_name            = request.json.get('user_task_name')
+        task_name                 = request.json.get('task_name')
+        execution_method          = request.json.get('execution_method')
         internal_execution_method = request.json.get('internal_execution_method')
-        executor = request.json.get('executor')
-        script_name = request.json.get('script_name')
-        script_path = request.json.get('script_path')
-        description = request.json.get('description')
-        srs       = request.json.get('srs')
-        sf        = request.json.get('sf')
-        sf_type   = request.json.get('sf_type')
-        lookup_id = request.json.get('lookup_id')
+        executor                  = request.json.get('executor')
+        script_name               = request.json.get('script_name')
+        script_path               = request.json.get('script_path')
+        description               = request.json.get('description')
+        srs                       = request.json.get('srs')
+        sf                        = request.json.get('sf')
+        sf_type                   = request.json.get('sf_type')
+        lookup_id                 = request.json.get('lookup_id')
+        group_ids                 = request.json.get('group_ids', [])  # list of group_id integers
 
         if sf == 'Y' and sf_type == 'PREDICTABLE':
             if not lookup_id:
@@ -41,32 +42,50 @@ def Create_Task():
                     jsonify({"error": f"Lookup with id={lookup_id} not found"}), 400
                 )
 
-        new_task = DefAsyncTask(
-            user_task_name = user_task_name,
-            task_name = task_name,
-            execution_method = execution_method,
-            internal_execution_method = internal_execution_method,
-            executor = executor,
-            script_name = script_name,
-            script_path = script_path,
-            description = description,
-            cancelled_yn = 'N',
-            srs = srs,
-            sf  = sf,
-            sf_type   = sf_type,
-            lookup_id = lookup_id,
-            created_by = get_jwt_identity(),
-            last_updated_by = get_jwt_identity(),
-            creation_date = datetime.utcnow(),
-            last_update_date = datetime.utcnow()
+        # Validate group_ids before writing anything
+        if group_ids:
+            for gid in group_ids:
+                if not DefTaskGroup.query.filter_by(group_id=gid).first():
+                    return make_response(
+                        jsonify({"error": f"Group with id={gid} not found"}), 400
+                    )
 
+        new_task = DefAsyncTask(
+            user_task_name            = user_task_name,
+            task_name                 = task_name,
+            execution_method          = execution_method,
+            internal_execution_method = internal_execution_method,
+            executor                  = executor,
+            script_name               = script_name,
+            script_path               = script_path,
+            description               = description,
+            cancelled_yn              = 'N',
+            srs                       = srs,
+            sf                        = sf,
+            sf_type                   = sf_type,
+            lookup_id                 = lookup_id,
+            created_by                = get_jwt_identity(),
+            last_updated_by           = get_jwt_identity(),
+            creation_date             = datetime.utcnow(),
+            last_update_date          = datetime.utcnow(),
         )
         db.session.add(new_task)
-        db.session.commit()
+        db.session.flush()  # get new_task.def_task_id before commit
 
+        # Assign task to groups
+        for gid in group_ids:
+            db.session.add(DefTaskGroupMember(
+                group_id      = gid,
+                def_task_id   = new_task.def_task_id,
+                created_by    = get_jwt_identity(),
+                creation_date = datetime.utcnow(),
+            ))
+
+        db.session.commit()
         return {"message": "Added successfully"}, 201
 
     except Exception as e:
+        db.session.rollback()
         return {"message": "Error creating Task", "error": str(e)}, 500
 
 
@@ -74,12 +93,21 @@ def Create_Task():
 @jwt_required()
 @role_required()
 def get_async_tasks():
+    """
+    Optional query params:
+      - def_task_id     : filter by task id
+      - task_name       : filter by exact task name
+      - user_task_name  : partial search on display name
+      - group_id        : filter to tasks belonging to a specific group
+      - page / limit    : pagination
+    """
     try:
-        page = request.args.get('page', type=int)
-        limit = request.args.get('limit', type=int)
-        search_query = request.args.get('user_task_name', '').strip().lower()
-        task_name = request.args.get('task_name')
-        def_task_id = request.args.get('def_task_id')
+        page           = request.args.get('page', type=int)
+        limit          = request.args.get('limit', type=int)
+        search_query   = request.args.get('user_task_name', '').strip().lower()
+        task_name      = request.args.get('task_name')
+        def_task_id    = request.args.get('def_task_id')
+        group_id       = request.args.get('group_id', type=int)
 
         query = DefAsyncTask.query
 
@@ -87,36 +115,76 @@ def get_async_tasks():
             query = query.filter_by(def_task_id=def_task_id)
         if task_name:
             query = query.filter_by(task_name=task_name)
-
         if search_query:
             search_underscore = search_query.replace(' ', '_')
-            search_space = search_query.replace('_', ' ')
+            search_space      = search_query.replace('_', ' ')
             query = query.filter(or_(
                 DefAsyncTask.user_task_name.ilike(f'%{search_query}%'),
                 DefAsyncTask.user_task_name.ilike(f'%{search_underscore}%'),
                 DefAsyncTask.user_task_name.ilike(f'%{search_space}%')
             ))
 
-        query = query.order_by(DefAsyncTask.def_task_id.desc())
+        # Filter by group: include tasks in the specific group OR generic tasks not in any group
+        if group_id:
+            in_target_group = db.session.query(DefTaskGroupMember.def_task_id).filter(
+                DefTaskGroupMember.def_task_id == DefAsyncTask.def_task_id,
+                DefTaskGroupMember.group_id == group_id
+            ).exists()
+            
+            in_any_group = db.session.query(DefTaskGroupMember.def_task_id).filter(
+                DefTaskGroupMember.def_task_id == DefAsyncTask.def_task_id
+            ).exists()
+
+            query = query.filter(or_(
+                in_target_group,
+                ~in_any_group
+            ))
+            
+            query = query.order_by(in_target_group.desc(), DefAsyncTask.def_task_id.desc())
+        else:
+            query = query.order_by(DefAsyncTask.def_task_id.desc())
 
         if page is not None and limit is not None:
             paginated = query.paginate(page=page, per_page=limit, error_out=False)
+            result_list = []
+            
+            if group_id:
+                group_memberships = db.session.query(DefTaskGroupMember.def_task_id).filter_by(group_id=group_id).all()
+                tasks_in_group = {m[0] for m in group_memberships}
+                for t in paginated.items:
+                    t_json = t.json()
+                    t_json['group_id'] = group_id if t.def_task_id in tasks_in_group else None
+                    result_list.append(t_json)
+            else:
+                result_list = [t.json() for t in paginated.items]
+
             return make_response(jsonify({
-                "result": [task.json() for task in paginated.items],
-                "total": paginated.total,
-                "pages": 1 if paginated.total == 0 else paginated.pages,
-                "page":  1 if paginated.total == 0 else paginated.page
+                "result": result_list,
+                "total":  paginated.total,
+                "pages":  1 if paginated.total == 0 else paginated.pages,
+                "page":   1 if paginated.total == 0 else paginated.page,
             }), 200)
-        
-        # If no pagination is provided but they request a specific task, return the single object to keep old behavior
-        if (task_name or def_task_id) and not search_query:
+
+        # Single-task lookup (no pagination) — keep old behaviour
+        if (task_name or def_task_id) and not search_query and not group_id:
             task = query.first()
             if not task:
                 return make_response(jsonify({"message": "Task not found"}), 404)
             return make_response(jsonify(task.json()), 200)
 
         tasks = query.all()
-        return make_response(jsonify({"result": [task.json() for task in tasks]}), 200)
+        result_list = []
+        if group_id:
+            group_memberships = db.session.query(DefTaskGroupMember.def_task_id).filter_by(group_id=group_id).all()
+            tasks_in_group = {m[0] for m in group_memberships}
+            for t in tasks:
+                t_json = t.json()
+                t_json['group_id'] = group_id if t.def_task_id in tasks_in_group else None
+                result_list.append(t_json)
+        else:
+            result_list = [t.json() for t in tasks]
+
+        return make_response(jsonify({"result": result_list}), 200)
 
     except Exception as e:
         return make_response(jsonify({"message": "Error fetching tasks", "error": str(e)}), 500)
@@ -137,48 +205,69 @@ def Show_Tasks_v1():
 def Update_Task(task_name):
     try:
         task = DefAsyncTask.query.filter_by(task_name=task_name).first()
-        if task:
-            # Extract request values if provided, otherwise fallback to current values
-            sf = request.json.get('sf') if 'sf' in request.json else task.sf
-            sf_type = request.json.get('sf_type') if 'sf_type' in request.json else task.sf_type
-            lookup_id = request.json.get('lookup_id') if 'lookup_id' in request.json else task.lookup_id
+        if not task:
+            return make_response(jsonify({"message": f"Async Task with name '{task_name}' not found"}), 404)
 
-            if sf == 'Y' and sf_type == 'PREDICTABLE':
-                if not lookup_id:
+        # Extract request values if provided, otherwise fallback to current values
+        sf        = request.json.get('sf')        if 'sf'        in request.json else task.sf
+        sf_type   = request.json.get('sf_type')   if 'sf_type'   in request.json else task.sf_type
+        lookup_id = request.json.get('lookup_id') if 'lookup_id' in request.json else task.lookup_id
+
+        if sf == 'Y' and sf_type == 'PREDICTABLE':
+            if not lookup_id:
+                return make_response(
+                    jsonify({"error": "lookup_id is required for sf_type='PREDICTABLE'"}), 400
+                )
+            if not DefLookup.query.filter_by(lookup_id=lookup_id).first():
+                return make_response(
+                    jsonify({"error": f"Lookup with id={lookup_id} not found"}), 400
+                )
+
+        # Validate group_ids before writing anything
+        if 'group_ids' in request.json:
+            group_ids = request.json.get('group_ids', [])
+            for gid in group_ids:
+                if not DefTaskGroup.query.filter_by(group_id=gid).first():
                     return make_response(
-                        jsonify({"error": "lookup_id is required for sf_type='PREDICTABLE'"}), 400
-                    )
-                if not DefLookup.query.filter_by(lookup_id=lookup_id).first():
-                    return make_response(
-                        jsonify({"error": f"Lookup with id={lookup_id} not found"}), 400
+                        jsonify({"error": f"Group with id={gid} not found"}), 400
                     )
 
-            # Only update fields that are provided in the request
-            if 'user_task_name' in request.json:
-                task.user_task_name = request.json.get('user_task_name')
-            if 'execution_method' in request.json:
-                task.execution_method = request.json.get('execution_method')
-            if 'script_name' in request.json:
-                task.script_name = request.json.get('script_name')
-            if 'description' in request.json:
-                task.description = request.json.get('description')
-            if 'srs' in request.json:
-                task.srs = request.json.get('srs')
-            if 'sf' in request.json:
-                task.sf = sf
-            if 'sf_type' in request.json:
-                task.sf_type = sf_type
-            if 'lookup_id' in request.json:
-                task.lookup_id = lookup_id
-            task.last_updated_by = get_jwt_identity()
-            task.last_update_date = datetime.utcnow()
+        # Only update fields that are provided in the request
+        if 'user_task_name' in request.json:
+            task.user_task_name = request.json.get('user_task_name')
+        if 'execution_method' in request.json:
+            task.execution_method = request.json.get('execution_method')
+        if 'script_name' in request.json:
+            task.script_name = request.json.get('script_name')
+        if 'description' in request.json:
+            task.description = request.json.get('description')
+        if 'srs' in request.json:
+            task.srs = request.json.get('srs')
+        if 'sf' in request.json:
+            task.sf = sf
+        if 'sf_type' in request.json:
+            task.sf_type = sf_type
+        if 'lookup_id' in request.json:
+            task.lookup_id = lookup_id
+        task.last_updated_by  = get_jwt_identity()
+        task.last_update_date = datetime.utcnow()
 
-            db.session.commit()
-            return make_response(jsonify({"message": "Edited successfully"}), 200)
+        # Sync group memberships (full replace: delete old → insert new)
+        if 'group_ids' in request.json:
+            DefTaskGroupMember.query.filter_by(def_task_id=task.def_task_id).delete()
+            for gid in group_ids:
+                db.session.add(DefTaskGroupMember(
+                    group_id      = gid,
+                    def_task_id   = task.def_task_id,
+                    created_by    = get_jwt_identity(),
+                    creation_date = datetime.utcnow(),
+                ))
 
-        return make_response(jsonify({"message": f"Async Task with name '{task_name}' not found"}), 404)
+        db.session.commit()
+        return make_response(jsonify({"message": "Edited successfully"}), 200)
 
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({"message": "Error editing async Task", "error": str(e)}), 500)
 
 
