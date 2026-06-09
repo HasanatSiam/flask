@@ -28,6 +28,20 @@ def create_api_endpoint():
         method = request.json.get('method')
         privilege_id = request.json.get('privilege_id')
 
+        # Parameter validation
+        if parameters is not None:
+            if not isinstance(parameters, list):
+                return make_response(jsonify({'error': 'Parameters must be a list of objects.'}), 400)
+            
+            required_keys = {"name", "type", "location", "required"}
+            for param in parameters:
+                if not isinstance(param, dict):
+                    return make_response(jsonify({'error': 'Each parameter must be a JSON object.'}), 400)
+                if not required_keys.issubset(param.keys()):
+                    return make_response(jsonify({'error': f'Missing required keys in parameter. Must contain: {required_keys}'}), 400)
+                if not isinstance(param.get("required"), bool):
+                    return make_response(jsonify({'error': "'required' field must be a boolean."}), 400)
+
         # FK validation
         if privilege_id and not DefPrivilege.query.filter_by(privilege_id=privilege_id).first():
             return make_response(jsonify({'error': 'privilege_id not found'}), 404)

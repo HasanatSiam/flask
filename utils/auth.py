@@ -143,53 +143,53 @@ def role_required():
                 # Find Endpoint
                 # =====================================================
 
-                endpoint = DefApiEndpoint.query.filter(
+                endpoints = DefApiEndpoint.query.filter(
                     DefApiEndpoint.api_endpoint_id.in_(
                         allowed_api_endpoint_ids
                     ),
                     DefApiEndpoint.api_endpoint == api_endpoint,
                     DefApiEndpoint.method == method
-                ).first()
+                ).all()
 
-                if not endpoint:
+                if not endpoints:
                     return jsonify({
                         "message": "Access denied"
                     }), 403
 
                 # =====================================================
-                # Validate Parameters
+                # Validate Parameters & Find Exact Match
                 # =====================================================
 
-                stored_parameters = endpoint.parameters or []
+                actual_path_params = sorted(path_param_names)
 
-                stored_path_params = sorted([
-                    p["name"]
-                    for p in stored_parameters
-                    if p.get("location") == "path"
-                ])
+                endpoint = None
+                stored_required_query_params = []
+                last_expected_path_params = []
 
-                stored_required_query_params = [
-                    p["name"]
-                    for p in stored_parameters
-                    if (
-                        p.get("location") == "query"
-                        and p.get("required") is True
-                    )
-                ]
+                for ep in endpoints:
+                    ep_params = ep.parameters or []
+                    ep_path_params = sorted([
+                        p["name"] for p in ep_params if p.get("location") == "path"
+                    ])
 
-                actual_path_params = sorted(
-                    path_param_names
-                )
+                    last_expected_path_params = ep_path_params
+
+                    if ep_path_params == actual_path_params:
+                        endpoint = ep
+                        stored_required_query_params = [
+                            p["name"] for p in ep_params 
+                            if p.get("location") == "query" and p.get("required") is True
+                        ]
+                        break
 
                 # -----------------------------------------------------
                 # Path Parameter Validation
                 # -----------------------------------------------------
 
-                if stored_path_params != actual_path_params:
-
+                if not endpoint:
                     return jsonify({
                         "message": "Path parameter mismatch",
-                        "expected": stored_path_params,
+                        "expected": last_expected_path_params,
                         "received": actual_path_params
                     }), 403
 
