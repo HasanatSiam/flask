@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
-    DefAsyncTask, DefLookup, DefLookupValue, VwLookupWithValues,
+    DefAsyncTask, DefAsyncTasksV, DefLookup, DefLookupValue, VwLookupWithValues,
     DefTaskGroup, DefTaskGroupMember
 )
 from . import async_task_bp
@@ -109,7 +109,7 @@ def get_async_tasks():
         def_task_id    = request.args.get('def_task_id')
         group_id       = request.args.get('group_id', type=int)
 
-        query = DefAsyncTask.query
+        query = DefAsyncTasksV.query
 
         if def_task_id:
             query = query.filter_by(def_task_id=def_task_id)
@@ -119,44 +119,28 @@ def get_async_tasks():
             search_underscore = search_query.replace(' ', '_')
             search_space      = search_query.replace('_', ' ')
             query = query.filter(or_(
-                DefAsyncTask.user_task_name.ilike(f'%{search_query}%'),
-                DefAsyncTask.user_task_name.ilike(f'%{search_underscore}%'),
-                DefAsyncTask.user_task_name.ilike(f'%{search_space}%')
+                DefAsyncTasksV.user_task_name.ilike(f'%{search_query}%'),
+                DefAsyncTasksV.user_task_name.ilike(f'%{search_underscore}%'),
+                DefAsyncTasksV.user_task_name.ilike(f'%{search_space}%')
             ))
 
         # Filter by group: include tasks in the specific group OR generic tasks not in any group
         if group_id:
-            in_target_group = db.session.query(DefTaskGroupMember.def_task_id).filter(
-                DefTaskGroupMember.def_task_id == DefAsyncTask.def_task_id,
-                DefTaskGroupMember.group_id == group_id
-            ).exists()
-            
-            in_any_group = db.session.query(DefTaskGroupMember.def_task_id).filter(
-                DefTaskGroupMember.def_task_id == DefAsyncTask.def_task_id
-            ).exists()
+            in_target_group = DefAsyncTasksV.group_ids.contains([group_id])
+            no_group = db.func.jsonb_array_length(DefAsyncTasksV.group_ids) == 0
 
             query = query.filter(or_(
                 in_target_group,
-                ~in_any_group
+                no_group
             ))
             
-            query = query.order_by(in_target_group.desc(), DefAsyncTask.def_task_id.desc())
+            query = query.order_by(in_target_group.desc(), DefAsyncTasksV.def_task_id.desc())
         else:
-            query = query.order_by(DefAsyncTask.def_task_id.desc())
+            query = query.order_by(DefAsyncTasksV.def_task_id.desc())
 
         if page is not None and limit is not None:
             paginated = query.paginate(page=page, per_page=limit, error_out=False)
-            result_list = []
-            
-            if group_id:
-                group_memberships = db.session.query(DefTaskGroupMember.def_task_id).filter_by(group_id=group_id).all()
-                tasks_in_group = {m[0] for m in group_memberships}
-                for t in paginated.items:
-                    t_json = t.json()
-                    t_json['group_id'] = group_id if t.def_task_id in tasks_in_group else None
-                    result_list.append(t_json)
-            else:
-                result_list = [t.json() for t in paginated.items]
+            result_list = [t.json() for t in paginated.items]
 
             return make_response(jsonify({
                 "result": result_list,
@@ -173,16 +157,7 @@ def get_async_tasks():
             return make_response(jsonify(task.json()), 200)
 
         tasks = query.all()
-        result_list = []
-        if group_id:
-            group_memberships = db.session.query(DefTaskGroupMember.def_task_id).filter_by(group_id=group_id).all()
-            tasks_in_group = {m[0] for m in group_memberships}
-            for t in tasks:
-                t_json = t.json()
-                t_json['group_id'] = group_id if t.def_task_id in tasks_in_group else None
-                result_list.append(t_json)
-        else:
-            result_list = [t.json() for t in tasks]
+        result_list = [t.json() for t in tasks]
 
         return make_response(jsonify({"result": result_list}), 200)
 
@@ -193,7 +168,7 @@ def get_async_tasks():
 @async_task_bp.route('/def_async_tasks/v1', methods=['GET'])
 def Show_Tasks_v1():
     try:
-        tasks = DefAsyncTask.query.order_by(DefAsyncTask.def_task_id.desc()).all()
+        tasks = DefAsyncTasksV.query.order_by(DefAsyncTasksV.def_task_id.desc()).all()
         return make_response(jsonify([task.json() for task in tasks]))
     except Exception as e:
         return make_response(jsonify({"message": "Error getting async Tasks", "error": str(e)}), 500)
