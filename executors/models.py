@@ -596,6 +596,53 @@ class DefAsyncTaskRequest(db.Model):
 
     
 
+class DefAsyncTasksV(db.Model):
+    __tablename__ = 'def_async_tasks_v'
+
+    def_task_id = db.Column(db.Integer, primary_key=True)
+    user_task_name = db.Column(db.String(255))
+    task_name = db.Column(db.String(255))
+    internal_execution_method = db.Column(db.String(255))
+    execution_method = db.Column(db.String(100))
+    executor = db.Column(db.String(100))
+    script_name = db.Column(db.String(100))
+    script_path = db.Column(db.String(100))
+    description = db.Column(db.String(255))
+    cancelled_yn = db.Column(db.String(1))
+    srs = db.Column(db.String(1))
+    sf = db.Column(db.String(1))
+    sf_type = db.Column(db.String(30))
+    lookup_id = db.Column(db.Integer)
+    created_by = db.Column(db.Integer)
+    creation_date = db.Column(db.TIMESTAMP)
+    last_updated_by = db.Column(db.Integer)
+    last_update_date = db.Column(db.TIMESTAMP)
+    group_ids = db.Column(JSONB)
+
+    def json(self):
+        return {
+            "def_task_id": self.def_task_id,
+            "user_task_name": self.user_task_name,
+            "task_name": self.task_name,
+            "internal_execution_method": self.internal_execution_method,
+            "execution_method": self.execution_method,
+            "executor": self.executor,
+            "script_name": self.script_name,
+            "script_path" : self.script_path,
+            "description": self.description,
+            "cancelled_yn": self.cancelled_yn,
+            "srs": self.srs,
+            "sf": self.sf,
+            "sf_type": self.sf_type,
+            "lookup_id": self.lookup_id,
+            "created_by": self.created_by,
+            "creation_date": self.creation_date,
+            "last_updated_by": self.last_updated_by,
+            "last_update_date": self.last_update_date,
+            "group_ids": self.group_ids or [],
+        }
+
+
 class DefAsyncTaskSchedulesV(db.Model):
     __tablename__ = 'def_async_task_schedules_v'  # View name
     
