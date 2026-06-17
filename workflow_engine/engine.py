@@ -186,11 +186,23 @@ class WorkflowEngine:
             else:
                 actual_result = executor_output
 
+            # Executor-level error (celery/wrapper failed)
             if error:
                 return {
                     'status': ExecutionStatus.FAILED,
                     'node_id': node_id,
                     'error': error,
+                    'input_data': strict_context
+                }
+
+            # Script-level semantic error: the script itself returned {"error": "..."}
+            # This is distinct from predictable SF scalars ("Y"/"N"/"E") which are strings, not dicts.
+            if isinstance(actual_result, dict) and actual_result.get('error'):
+                return {
+                    'status': ExecutionStatus.FAILED,
+                    'node_id': node_id,
+                    'error': actual_result.get('error'),
+                    'result': actual_result,
                     'input_data': strict_context
                 }
 
