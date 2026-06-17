@@ -139,7 +139,7 @@ class WorkflowEngine:
         if not task:
             logger.warning(f"Task not found: {step_function}")
             return {
-                'status': 'failed',
+                'status': ExecutionStatus.FAILED,
                 'node_id': node_id,
                 'error': f'Task not found: {step_function}',
                 'input_data': step_context
@@ -157,7 +157,7 @@ class WorkflowEngine:
         executor = EXECUTORS.get(task.executor)
         if not executor:
             return {
-                'status': 'failed',
+                'status': ExecutionStatus.FAILED,
                 'node_id': node_id,
                 'error': f'Unknown executor: {task.executor}',
                 'input_data': strict_context
@@ -188,14 +188,14 @@ class WorkflowEngine:
 
             if error:
                 return {
-                    'status': 'failed',
+                    'status': ExecutionStatus.FAILED,
                     'node_id': node_id,
                     'error': error,
                     'input_data': strict_context
                 }
 
             return {
-                'status': 'completed',
+                'status': ExecutionStatus.COMPLETED,
                 'node_id': node_id,
                 'task_name': task.task_name,
                 'sf_type': task.sf_type or '',
@@ -206,7 +206,7 @@ class WorkflowEngine:
         except Exception as e:
             logger.exception(f"Step failed: {label}")
             return {
-                'status': 'failed',
+                'status': ExecutionStatus.FAILED,
                 'node_id': node_id,
                 'error': str(e),
                 'input_data': strict_context
@@ -308,7 +308,7 @@ class WorkflowEngine:
                 step_record.status = result.get('status')
                 if 'input_data' in result:
                     step_record.input_data = result.get('input_data')
-                if result.get('status') == 'completed':
+                if result.get('status') == ExecutionStatus.COMPLETED:
                     step_record.result = result.get('result')
                 step_record.error_message = result.get('error')
                 step_record.execution_end_date = datetime.utcnow()
