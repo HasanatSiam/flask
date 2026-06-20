@@ -81,6 +81,19 @@ def introspect_outputs(script_path):
         for m in re.finditer(r"\bjson\.dumps\s*\(\s*\{([^}]*)\}", content, re.S):
             keys.extend(_extract_keys(m.group(1)))
 
+        # Pattern 4: Parse docstring for 'Output keys added to context'
+        m = re.search(r"Output keys added to context[^\n]*\n(.*?)(?:\n\s*\n|\"\"\"|''')", content + '\n\n', re.S | re.I)
+        if m:
+            doc_block = m.group(1)
+            doc_block = re.sub(r'\(.*?\)', '', doc_block)
+            for line in doc_block.split('\n'):
+                line = line.strip()
+                if not line: continue
+                line = re.sub(r'[—\-].*', '', line)
+                for k in re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', line):
+                    if k.lower() not in EXCLUDED_KEYS and k.lower() != 'and':
+                        keys.append(k)
+
     except Exception:
         pass
     return list(dict.fromkeys(keys))  # unique, preserve order
