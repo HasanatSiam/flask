@@ -235,16 +235,35 @@ def get_required_params():
         def _resolve_script_path(path_value, base_dir=None):
             if not path_value or not isinstance(path_value, str):
                 return None
+            
+            # List of directories to check: provided base_dir, env var, and common fallback locations
+            search_dirs = []
+            if base_dir:
+                search_dirs.append(base_dir)
+            if script_base and script_base not in search_dirs:
+                search_dirs.append(script_base)
+            
+            fallback_dirs = [
+                "x:/pypy/Github/scripts/python",
+                "c:/d01/def/app/server/scripts/python",
+                "/d01/def/app/server/scripts/python"
+            ]
+            for fd in fallback_dirs:
+                if fd not in search_dirs:
+                    search_dirs.append(fd)
+            
             if path_value.endswith('.py') or os.path.sep in path_value or '/' in path_value:
                 if os.path.isabs(path_value):
                     return path_value if os.path.isfile(path_value) else None
-                if base_dir:
-                    full_path = os.path.join(base_dir, path_value)
+                for d in search_dirs:
+                    full_path = os.path.join(d, path_value)
                     if os.path.isfile(full_path):
                         return full_path
                 return path_value if os.path.isfile(path_value) else None
-            if base_dir:
-                auto_path = os.path.join(base_dir, f"{path_value}.py")
+                
+            # If no extension provided, add .py and search
+            for d in search_dirs:
+                auto_path = os.path.join(d, f"{path_value}.py")
                 if os.path.isfile(auto_path):
                     return auto_path
             return None
@@ -293,19 +312,37 @@ def get_required_params():
         script_cache = {}
         
         def _get_inputs(task_name, node_data):
-            """Get inputs for a task - DB first, then introspect script"""
-            if db_params_map.get(task_name):
-                return db_params_map[task_name]
-            
-            # Try node's script_path first, then lookup from DB
+            """Get inputs for a task - script introspection first, then fallback to DB metadata"""
             path = node_data.get('script_path') or node_data.get('script') or script_path_map.get(task_name)
-            if not path:
-                return []
             
-            cache_key = f"in_{path}"
-            if cache_key not in script_cache:
-                script_cache[cache_key] = introspect_inputs(path)
-            return script_cache[cache_key]
+            script_inputs = []
+            if path:
+                cache_key = f"in_{path}"
+                if cache_key not in script_cache:
+                    script_cache[cache_key] = introspect_inputs(path)
+                script_inputs = script_cache[cache_key]
+                
+            db_params = db_params_map.get(task_name) or []
+            
+            if script_inputs:
+                # Use script inputs as source of truth for WHAT is required
+                # Use DB params to enrich with type and description
+                db_lookup = {p['name']: p for p in db_params}
+                result = []
+                for sp in script_inputs:
+                    name = sp['name']
+                    if name in db_lookup:
+                        result.append(db_lookup[name])
+                    else:
+                        result.append({
+                            "name": name,
+                            "type": "string",
+                            "description": ""
+                        })
+                return result
+                
+            # Fallback to DB if script couldn't be introspected
+            return db_params
         
         def _get_outputs(task_name, node_data):
             """Get outputs for a task - introspect from script"""
@@ -559,19 +596,34 @@ def get_predecessor_outputs_api():
             if not path_value or not isinstance(path_value, str):
                 return None
 
+            search_dirs = []
+            if base_dir:
+                search_dirs.append(base_dir)
+            if script_base and script_base not in search_dirs:
+                search_dirs.append(script_base)
+            
+            fallback_dirs = [
+                "x:/pypy/Github/scripts/python",
+                "c:/d01/def/app/server/scripts/python",
+                "/d01/def/app/server/scripts/python"
+            ]
+            for fd in fallback_dirs:
+                if fd not in search_dirs:
+                    search_dirs.append(fd)
+
             # Already a path-like value
             if path_value.endswith('.py') or os.path.sep in path_value or '/' in path_value:
                 if os.path.isabs(path_value):
                     return path_value if os.path.isfile(path_value) else None
-                if base_dir:
-                    full_path = os.path.join(base_dir, path_value)
+                for d in search_dirs:
+                    full_path = os.path.join(d, path_value)
                     if os.path.isfile(full_path):
                         return full_path
                 return path_value if os.path.isfile(path_value) else None
 
-            # Task name fallback: {base_dir}/{task_name}.py
-            if base_dir:
-                auto_path = os.path.join(base_dir, f"{path_value}.py")
+            # Task name fallback
+            for d in search_dirs:
+                auto_path = os.path.join(d, f"{path_value}.py")
                 if os.path.isfile(auto_path):
                     return auto_path
             return None
