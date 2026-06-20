@@ -232,6 +232,23 @@ def get_required_params():
         # Script base path from env, with hardcoded fallback
         script_base = os.getenv("SCRIPT_PATH_01", "")
         
+        def _resolve_script_path(path_value, base_dir=None):
+            if not path_value or not isinstance(path_value, str):
+                return None
+            if path_value.endswith('.py') or os.path.sep in path_value or '/' in path_value:
+                if os.path.isabs(path_value):
+                    return path_value if os.path.isfile(path_value) else None
+                if base_dir:
+                    full_path = os.path.join(base_dir, path_value)
+                    if os.path.isfile(full_path):
+                        return full_path
+                return path_value if os.path.isfile(path_value) else None
+            if base_dir:
+                auto_path = os.path.join(base_dir, f"{path_value}.py")
+                if os.path.isfile(auto_path):
+                    return auto_path
+            return None
+
         # Collect all task names to batch lookup script paths
         task_names = []
         for n in nodes:
@@ -247,32 +264,26 @@ def get_required_params():
             try:
                 tasks = DefAsyncTask.query.filter(DefAsyncTask.task_name.in_(unique_names)).all()
                 for t in tasks:
-                    # Prefer script_path, fallback to script_name
-                    path = t.script_path or t.script_name
-                    if path:
-                        # If it's already an absolute path and exists, use it directly
-                        if os.path.isabs(path):
-                            if os.path.isfile(path):
-                                script_path_map[t.task_name] = path
-                        elif script_base:
-                            # Join with script_base if available
-                            full_path = os.path.join(script_base, path)
-                            if os.path.isfile(full_path):
-                                script_path_map[t.task_name] = full_path
-                        else:
-                            # No script_base, try path directly (might work if relative to CWD)
-                            if os.path.isfile(path):
-                                script_path_map[t.task_name] = path
+                    # Dynamically determine script base from task if it looks like an ENV var (e.g. SCRIPT_PATH_01)
+                    task_base = script_base
+                    if t.script_path and not t.script_path.endswith('.py') and not os.path.isabs(t.script_path):
+                        env_val = os.getenv(t.script_path.upper())
+                        if env_val:
+                            task_base = env_val
+                    
+                    path_val = t.script_path if (t.script_path and t.script_path.endswith('.py')) else t.script_name
+                    resolved = _resolve_script_path(path_val, task_base)
+                    if resolved:
+                        script_path_map[t.task_name] = resolved
             except Exception as e:
                 print(f"Error fetching tasks from DB: {e}")  # Fall back to auto-detection if DB lookup fails
             
             # Fallback: for tasks not found in DB, try auto-detecting {task_name}.py
-            if script_base:
-                for task_name in unique_names:
-                    if task_name not in script_path_map:
-                        auto_path = os.path.join(script_base, f"{task_name}.py")
-                        if os.path.isfile(auto_path):
-                            script_path_map[task_name] = auto_path
+            for task_name in unique_names:
+                if task_name not in script_path_map:
+                    resolved = _resolve_script_path(task_name, script_base)
+                    if resolved:
+                        script_path_map[task_name] = resolved
         
         
         # Batch fetch DB params
@@ -544,7 +555,7 @@ def get_predecessor_outputs_api():
         # Resolve task names to actual script paths so introspection works
         script_base = os.getenv("SCRIPT_PATH_01", "")
 
-        def _resolve_script_path(path_value):
+        def _resolve_script_path(path_value, base_dir=None):
             if not path_value or not isinstance(path_value, str):
                 return None
 
@@ -552,15 +563,15 @@ def get_predecessor_outputs_api():
             if path_value.endswith('.py') or os.path.sep in path_value or '/' in path_value:
                 if os.path.isabs(path_value):
                     return path_value if os.path.isfile(path_value) else None
-                if script_base:
-                    full_path = os.path.join(script_base, path_value)
+                if base_dir:
+                    full_path = os.path.join(base_dir, path_value)
                     if os.path.isfile(full_path):
                         return full_path
                 return path_value if os.path.isfile(path_value) else None
 
-            # Task name fallback: {SCRIPT_PATH_01}/{task_name}.py
-            if script_base:
-                auto_path = os.path.join(script_base, f"{path_value}.py")
+            # Task name fallback: {base_dir}/{task_name}.py
+            if base_dir:
+                auto_path = os.path.join(base_dir, f"{path_value}.py")
                 if os.path.isfile(auto_path):
                     return auto_path
             return None
@@ -578,8 +589,14 @@ def get_predecessor_outputs_api():
             try:
                 tasks = DefAsyncTask.query.filter(DefAsyncTask.task_name.in_(unique_names)).all()
                 for task in tasks:
-                    path_value = task.script_path or task.script_name
-                    resolved = _resolve_script_path(path_value)
+                    task_base = script_base
+                    if task.script_path and not task.script_path.endswith('.py') and not os.path.isabs(task.script_path):
+                        env_val = os.getenv(task.script_path.upper())
+                        if env_val:
+                            task_base = env_val
+
+                    path_value = task.script_path if (task.script_path and task.script_path.endswith('.py')) else task.script_name
+                    resolved = _resolve_script_path(path_value, task_base)
                     if resolved:
                         script_path_map[task.task_name] = resolved
             except Exception:
@@ -588,7 +605,7 @@ def get_predecessor_outputs_api():
             # Filesystem fallback for unresolved names
             for task_name in unique_names:
                 if task_name not in script_path_map:
-                    resolved = _resolve_script_path(task_name)
+                    resolved = _resolve_script_path(task_name, script_base)
                     if resolved:
                         script_path_map[task_name] = resolved
 
