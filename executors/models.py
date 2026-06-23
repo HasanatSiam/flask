@@ -1215,6 +1215,7 @@ class DefProcessExecution(db.Model):
     def_process_execution_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     process_id = db.Column(db.Integer, db.ForeignKey('apps.def_processes.process_id'))
     execution_status = db.Column(db.String(50), default='RUNNING')
+    current_node_id = db.Column(db.String(100))
     input_data = db.Column(JSONB)
     output_data = db.Column(JSONB)
     error_message = db.Column(db.Text)
@@ -1230,6 +1231,7 @@ class DefProcessExecution(db.Model):
             'def_process_execution_id': self.def_process_execution_id,
             'process_id': self.process_id,
             'execution_status': self.execution_status,
+            'current_node_id': self.current_node_id,   
             'input_data': self.input_data,
             'output_data': self.output_data,
             'error_message': self.error_message,
@@ -1241,6 +1243,33 @@ class DefProcessExecution(db.Model):
             'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
         }
 
+
+class DefExecutionActionItems(db.Model):
+    __tablename__ = 'def_execution_action_items'
+    __table_args__ = {'schema': 'apps'}
+
+    def_execution_action_item_id = db.Column(db.Integer, primary_key=True)
+    execution_id   = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.execution_id'), nullable=False)
+    action_item_id = db.Column(db.Integer, db.ForeignKey('apps.def_action_items.action_item_id'), nullable=False, unique=True)
+    node_id        = db.Column(db.String(100), nullable=False)
+    response_data  = db.Column(JSONB, nullable=True)
+    created_by     = db.Column(db.Integer)
+    creation_date  = db.Column(db.DateTime(timezone=True), server_default=func.current_timestamp())
+    last_updated_by  = db.Column(db.Integer)
+    last_update_date = db.Column(db.DateTime(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    def json(self):
+        return {
+            'def_execution_action_item_id': self.def_execution_action_item_id,
+            'execution_id': self.execution_id,
+            'action_item_id': self.action_item_id,
+            'node_id': self.node_id,
+            'response_data': self.response_data,
+            'created_by': self.created_by,
+            'creation_date': self.creation_date.isoformat() if self.creation_date else None,
+            'last_updated_by': self.last_updated_by,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
+        }
 class DefProcessExecutionStep(db.Model):
     __tablename__ = 'def_process_execution_steps'
     __table_args__ = {'schema': 'apps'}
