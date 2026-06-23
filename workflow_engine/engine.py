@@ -180,7 +180,7 @@ class WorkflowEngine:
             )
 
             with allow_join_result():
-                executor_output = async_result.get(timeout=300, propagate=False)
+                executor_output = async_result.get(propagate=False)
             logger.debug(f"Executor output for {label}: {executor_output}")
 
             if isinstance(executor_output, Exception):
