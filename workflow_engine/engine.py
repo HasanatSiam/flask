@@ -44,6 +44,7 @@ class ExecutionStatus:
     RUNNING = 'RUNNING'
     COMPLETED = 'COMPLETED'
     FAILED = 'FAILED'
+    WAITING_ON_TASK = 'WAITING_ON_TASK'
 
 
 class WorkflowError(Exception):
@@ -152,6 +153,8 @@ class WorkflowEngine:
             for param in expected_params
             if param.parameter_name and param.parameter_name in step_context
         }
+        strict_context['execution_id']    = getattr(self, '_execution_id', None)
+        strict_context['current_node_id'] = node_id
 
         # Get executor
         executor = EXECUTORS.get(task.executor)
@@ -206,8 +209,14 @@ class WorkflowEngine:
                     'input_data': strict_context
                 }
 
+            # Allow executor script to dictate a WAITING_ON_TASK status dynamically
+            if isinstance(actual_result, dict) and actual_result.get('status') == ExecutionStatus.WAITING_ON_TASK:
+                step_status = ExecutionStatus.WAITING_ON_TASK
+            else:
+                step_status = ExecutionStatus.COMPLETED
+
             return {
-                'status': ExecutionStatus.COMPLETED,
+                'status': step_status,
                 'node_id': node_id,
                 'task_name': task.task_name,
                 'sf_type': task.sf_type or '',
@@ -272,6 +281,7 @@ class WorkflowEngine:
 
         context = dict(execution_record.input_data or {})
         user_id = execution_record.created_by
+        self._execution_id = execution_id
 
         structure_to_use = process_structure
         if not structure_to_use and execution_record.process_id:
@@ -285,13 +295,20 @@ class WorkflowEngine:
         try:
             self._parse(structure_to_use)
 
-            start = self._find_start()
-            if not start:
-                raise WorkflowError("No Start node found")
-
-            current_nodes = [start]
+            if execution_record.execution_status == ExecutionStatus.WAITING_ON_TASK and execution_record.current_node_id:
+                current_nodes = self._get_next_nodes(execution_record.current_node_id)
+                execution_record.execution_status = ExecutionStatus.RUNNING
+                execution_record.current_node_id = None
+                db.session.commit()
+            else:
+                start = self._find_start()
+                if not start:
+                    raise WorkflowError("No Start node found")
+                current_nodes = [start]
 
             while current_nodes:
+
+
                 node = current_nodes.pop(0)
                 shape_name = node.get('data', {}).get('type', '')
                 behavior = self._get_behavior(shape_name)
@@ -334,6 +351,13 @@ class WorkflowEngine:
                     execution_record.execution_status = ExecutionStatus.FAILED
                     execution_record.execution_end_date = datetime.utcnow()
                     execution_record.error_message = result.get('error')
+                    db.session.commit()
+                    return
+
+                # Suspend execution on User Task
+                if result.get('status') == ExecutionStatus.WAITING_ON_TASK:
+                    execution_record.execution_status = ExecutionStatus.WAITING_ON_TASK
+                    execution_record.current_node_id = node.get('id')
                     db.session.commit()
                     return
 
@@ -414,6 +438,28 @@ class WorkflowEngine:
         self.execute_from_id(execution_id, on_task_complete)
         execution = db.session.get(DefProcessExecution, execution_id)
         return execution.json()
+
+    def resume_execution(self, execution_id: int, task_result: dict, on_task_complete: Callable[[dict], None] = None) -> None:
+        """Resume execution from a suspended state with the provided task result."""
+        execution_record = db.session.get(DefProcessExecution, execution_id)
+        if not execution_record:
+            raise WorkflowError(f"Execution record not found: {execution_id}")
+
+        if execution_record.execution_status != ExecutionStatus.WAITING_ON_TASK:
+            raise WorkflowError(f"Execution is not in WAITING_ON_TASK state: {execution_record.execution_status}")
+            
+        node_id = execution_record.current_node_id
+        if not node_id:
+            raise WorkflowError("No current_node_id found on execution record to resume from")
+
+        # Update context
+        context = dict(execution_record.input_data or {})
+        self._update_context(node_id, task_result, '', context)
+        execution_record.input_data = context
+        db.session.commit()
+
+        # Resume engine execution
+        self.execute_from_id(execution_id, on_task_complete=on_task_complete)
 
     def validate(self, process_structure: dict) -> List[str]:
         """Validate process structure."""

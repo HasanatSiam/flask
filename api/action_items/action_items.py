@@ -9,11 +9,12 @@ from executors.models import (
     DefActionItem,
     DefActionItemAssignment,
     DefNotifications,
-    DefActionItemsV
+    DefActionItemsV,
+    DefExecutionActionItems
 
 )
 from . import action_items_bp
-
+from workflow_engine.tasks import resume_workflow_task
 
 # Create a DefActionItem
 
@@ -479,6 +480,21 @@ def update_action_item_assignment_status(user_id, action_item_id):
         assignment.last_update_date = datetime.utcnow()
 
         db.session.commit()
+
+        # ADD — workflow resume check
+        workflow_link = DefExecutionActionItems.query.filter_by(
+            action_item_id=action_item_id
+        ).first()
+
+        if workflow_link:
+            resume_workflow_task.delay(
+                workflow_link.execution_id,
+                {
+                    "predictable_result": data.get('response'),
+                    "responded_by":       user_id
+                }
+            )
+
         return make_response(jsonify({"message": "Status Updated Successfully"}), 200)
 
     except Exception as e:

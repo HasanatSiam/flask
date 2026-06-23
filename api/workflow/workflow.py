@@ -9,12 +9,12 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.auth import role_required
 from datetime import datetime
 import os
-from threading import Thread
 from flask import current_app
 
 from executors.extensions import db
 from executors.models import DefProcess, DefAsyncTask
-from workflow_engine import WorkflowEngine, WorkflowError
+from workflow_engine.engine import WorkflowEngine, WorkflowError, ExecutionStatus
+from workflow_engine.tasks import execute_workflow_task, resume_workflow_task
 from workflow_engine.introspection import (
     introspect_inputs,
     introspect_outputs,
@@ -243,11 +243,14 @@ def get_required_params():
             if script_base and script_base not in search_dirs:
                 search_dirs.append(script_base)
             
-            fallback_dirs = [
-                "x:/pypy/Github/scripts/python",
-                "c:/d01/def/app/server/scripts/python",
-                "/d01/def/app/server/scripts/python"
-            ]
+            # Determine a dynamic fallback path relative to this file's location
+            # (e.g., resolving from app/server/api/workflow to app/server/scripts/python)
+            try:
+                dynamic_fallback = os.path.abspath(os.path.join(current_app.root_path, 'scripts', 'python'))
+            except Exception:
+                dynamic_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'python'))
+                
+            fallback_dirs = [dynamic_fallback]
             for fd in fallback_dirs:
                 if fd not in search_dirs:
                     search_dirs.append(fd)
@@ -477,17 +480,8 @@ def run_workflow(process_id):
         # 1. Initialize the execution record (Sync)
         def_process_execution_id = engine.initialize_execution(process_id, context, user_id)
         
-        # 2. Run the engine (Async)
-        # We use a closure to ensure app context is available in the thread
-        app = current_app._get_current_object()
-        def background_run():
-            with app.app_context():
-                try:
-                    engine.execute_from_id(def_process_execution_id)
-                except Exception as e:
-                    print(f"Background execution failed for {def_process_execution_id}: {e}")
-
-        Thread(target=background_run).start()
+        # 2. Run the engine via Celery Task
+        execute_workflow_task.delay(def_process_execution_id)
         
         return jsonify({
             "message": "Workflow started",
@@ -602,11 +596,13 @@ def get_predecessor_outputs_api():
             if script_base and script_base not in search_dirs:
                 search_dirs.append(script_base)
             
-            fallback_dirs = [
-                "x:/pypy/Github/scripts/python",
-                "c:/d01/def/app/server/scripts/python",
-                "/d01/def/app/server/scripts/python"
-            ]
+            # Determine a dynamic fallback path relative to this file's location
+            try:
+                dynamic_fallback = os.path.abspath(os.path.join(current_app.root_path, 'scripts', 'python'))
+            except Exception:
+                dynamic_fallback = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'python'))
+                
+            fallback_dirs = [dynamic_fallback]
             for fd in fallback_dirs:
                 if fd not in search_dirs:
                     search_dirs.append(fd)
