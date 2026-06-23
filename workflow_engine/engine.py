@@ -169,7 +169,7 @@ class WorkflowEngine:
             }
 
         try:
-            async_result = executor.apply_async(
+            eager_result = executor.apply(
                 args=(
                     task.script_name or '',
                     task.user_task_name,
@@ -179,8 +179,7 @@ class WorkflowEngine:
                 kwargs=strict_context
             )
 
-            with allow_join_result():
-                executor_output = async_result.get(propagate=False)
+            executor_output = eager_result.get(propagate=False)
             logger.debug(f"Executor output for {label}: {executor_output}")
 
             if isinstance(executor_output, Exception):
