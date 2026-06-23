@@ -1249,7 +1249,7 @@ class DefExecutionActionItems(db.Model):
     __table_args__ = {'schema': 'apps'}
 
     def_execution_action_item_id = db.Column(db.Integer, primary_key=True)
-    execution_id   = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.execution_id'), nullable=False)
+    execution_id   = db.Column(db.Integer, db.ForeignKey('apps.def_process_executions.def_process_execution_id'), nullable=False)
     action_item_id = db.Column(db.Integer, db.ForeignKey('apps.def_action_items.action_item_id'), nullable=False, unique=True)
     node_id        = db.Column(db.String(100), nullable=False)
     response_data  = db.Column(JSONB, nullable=True)
