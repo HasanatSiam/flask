@@ -539,20 +539,7 @@ def run_adhoc_workflow():
         # 2. Initialize execution — link to process if process_id provided
         def_process_execution_id = engine.initialize_execution(process_id, context, user_id)
         
-        # 3. Run the engine (Async) passing the structure explicitly
-        app = current_app._get_current_object()
-        def background_run():
-            with app.app_context():
-                try:
-                    # Pass the structure directly since it's not in DB
-                    engine.execute_from_id(
-                        def_process_execution_id, 
-                        process_structure=process_structure
-                    )
-                except Exception as e:
-                    print(f"Background adhoc execution failed for {def_process_execution_id}: {e}")
-
-        Thread(target=background_run).start()
+        execute_workflow_task.delay(def_process_execution_id)
         
         return jsonify({
             "message": "Workflow started",
