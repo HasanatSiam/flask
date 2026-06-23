@@ -10,6 +10,8 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 
+from celery.result import allow_join_result
+
 from executors.extensions import db
 from executors.models import DefAsyncTask, DefProcess, DefProcessNodeType, DefProcessExecution, DefProcessExecutionStep, DefAsyncTaskParam
 
@@ -177,8 +179,17 @@ class WorkflowEngine:
                 kwargs=strict_context
             )
 
-            executor_output = async_result.get(timeout=300, propagate=False)
+            with allow_join_result():
+                executor_output = async_result.get(timeout=300, propagate=False)
             logger.debug(f"Executor output for {label}: {executor_output}")
+
+            if isinstance(executor_output, Exception):
+                return {
+                    'status': ExecutionStatus.FAILED,
+                    'node_id': node_id,
+                    'error': f"Celery task error: {repr(executor_output)}",
+                    'input_data': strict_context
+                }
 
             actual_result = None
             error = None
