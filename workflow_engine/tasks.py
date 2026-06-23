@@ -5,11 +5,11 @@ from workflow_engine.engine import WorkflowEngine, WorkflowError
 logger = logging.getLogger(__name__)
 
 @shared_task(name='workflow_engine.tasks.execute_workflow_task')
-def execute_workflow_task(execution_id: int):
+def execute_workflow_task(execution_id: int, process_structure: dict = None):
     """Celery task to run the workflow engine orchestrator loop."""
     try:
         engine = WorkflowEngine()
-        engine.execute_from_id(execution_id)
+        engine.execute_from_id(execution_id, process_structure=process_structure)
     except Exception as e:
         logger.error(f"Error in execute_workflow_task for execution {execution_id}: {e}", exc_info=True)
 
