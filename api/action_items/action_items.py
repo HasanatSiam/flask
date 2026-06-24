@@ -490,7 +490,6 @@ def update_action_item_assignment_status(user_id, action_item_id):
             # Store the response data back on the link record
             workflow_link.response_data = {
                 "status":       data['status'],
-                "response":     data.get('response'),
                 "responded_by": user_id,
                 "responded_at": datetime.utcnow().isoformat()
             }
@@ -501,7 +500,7 @@ def update_action_item_assignment_status(user_id, action_item_id):
             resume_workflow_task.delay(
                 workflow_link.execution_id,
                 {
-                    "predictable_result": data.get('response'),
+                    "predictable_result": data['status'],
                     "responded_by":       user_id
                 }
             )
