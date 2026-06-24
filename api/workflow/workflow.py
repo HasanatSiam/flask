@@ -537,7 +537,7 @@ def run_adhoc_workflow():
             return jsonify({"message": "Invalid workflow structure", "errors": errors}), 400
             
         # 2. Initialize execution — link to process if process_id provided
-        def_process_execution_id = engine.initialize_execution(process_id, context, user_id)
+        def_process_execution_id = engine.initialize_execution(process_id, context, user_id, process_structure=process_structure)
         
         execute_workflow_task.delay(def_process_execution_id, process_structure=process_structure)
         

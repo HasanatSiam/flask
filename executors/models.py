@@ -1218,6 +1218,7 @@ class DefProcessExecution(db.Model):
     current_node_id = db.Column(db.String(100))
     input_data = db.Column(JSONB)
     output_data = db.Column(JSONB)
+    process_structure = db.Column(JSONB)
     error_message = db.Column(db.Text)
     execution_start_date = db.Column(db.TIMESTAMP(timezone=True), server_default=func.current_timestamp())
     execution_end_date = db.Column(db.TIMESTAMP(timezone=True))
@@ -1234,6 +1235,7 @@ class DefProcessExecution(db.Model):
             'current_node_id': self.current_node_id,   
             'input_data': self.input_data,
             'output_data': self.output_data,
+            'process_structure': self.process_structure,
             'error_message': self.error_message,
             'execution_start_date': self.execution_start_date.isoformat() if self.execution_start_date else None,
             'execution_end_date': self.execution_end_date.isoformat() if self.execution_end_date else None,
@@ -1280,6 +1282,7 @@ class DefProcessExecutionStep(db.Model):
     node_label = db.Column(db.String(255))
     task_name = db.Column(db.String(255))
     status = db.Column(db.String(50))
+    celery_task_id = db.Column(db.String(255))
     input_data = db.Column(JSONB)
     result = db.Column(JSONB)
     error_message = db.Column(db.Text)
@@ -1298,6 +1301,7 @@ class DefProcessExecutionStep(db.Model):
             'node_label': self.node_label,
             'task_name': self.task_name,
             'status': self.status,
+            'celery_task_id': self.celery_task_id,
             'input_data': self.input_data,
             'result': self.result,
             'error_message': self.error_message,

@@ -10,8 +10,6 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 
-from celery.result import allow_join_result
-
 from executors.extensions import db
 from executors.models import DefAsyncTask, DefProcess, DefProcessNodeType, DefProcessExecution, DefProcessExecutionStep, DefAsyncTaskParam
 
@@ -111,8 +109,8 @@ class WorkflowEngine:
                 step_context[attr['attribute_name']] = attr.get('attribute_value', '')
         return step_context
 
-    def _execute_step(self, node: dict, context: dict) -> dict:
-        """Execute a single step node."""
+    def _execute_step_async(self, node: dict, context: dict) -> dict:
+        """Dispatch a single step node asynchronously via Celery apply_async."""
         node_id = node['id']
         data = node.get('data', {})
         shape_name = data.get('type', '')
@@ -169,73 +167,34 @@ class WorkflowEngine:
             }
 
         try:
-            eager_result = executor.apply(
+            # Lazy import to avoid circular dependency (tasks.py imports engine.py)
+            from workflow_engine.tasks import advance_workflow_step
+
+            async_result = executor.apply_async(
                 args=(
                     task.script_name or '',
                     task.user_task_name,
                     task.task_name,
                     None, None, None, None
                 ),
-                kwargs=strict_context
+                kwargs=strict_context,
+                link=advance_workflow_step.s(
+                    execution_id=self._execution_id,
+                    node_id=node_id
+                )
             )
 
-            executor_output = eager_result.get(propagate=False)
-            logger.debug(f"Executor output for {label}: {executor_output}")
-
-            if isinstance(executor_output, Exception):
-                return {
-                    'status': ExecutionStatus.FAILED,
-                    'node_id': node_id,
-                    'error': f"Celery task error: {repr(executor_output)}",
-                    'input_data': strict_context
-                }
-
-            actual_result = None
-            error = None
-
-            if isinstance(executor_output, dict):
-                actual_result = executor_output.get('result')
-                error = executor_output.get('error')
-            else:
-                actual_result = executor_output
-
-            # Executor-level error (celery/wrapper failed)
-            if error:
-                return {
-                    'status': ExecutionStatus.FAILED,
-                    'node_id': node_id,
-                    'error': error,
-                    'input_data': strict_context
-                }
-
-            # Script-level semantic error: the script itself returned {"error": "..."}
-            # This is distinct from predictable SF scalars ("Y"/"N"/"E") which are strings, not dicts.
-            if isinstance(actual_result, dict) and actual_result.get('error'):
-                return {
-                    'status': ExecutionStatus.FAILED,
-                    'node_id': node_id,
-                    'error': actual_result.get('error'),
-                    'result': actual_result,
-                    'input_data': strict_context
-                }
-
-            # Allow executor script to dictate a WAITING_ON_TASK status dynamically
-            if isinstance(actual_result, dict) and actual_result.get('status') == ExecutionStatus.WAITING_ON_TASK:
-                step_status = ExecutionStatus.WAITING_ON_TASK
-            else:
-                step_status = ExecutionStatus.COMPLETED
-
             return {
-                'status': step_status,
+                'status': 'DISPATCHED',
                 'node_id': node_id,
+                'celery_task_id': async_result.id,
                 'task_name': task.task_name,
                 'sf_type': task.sf_type or '',
-                'result': actual_result,
                 'input_data': strict_context
             }
 
         except Exception as e:
-            logger.exception(f"Step failed: {label}")
+            logger.exception(f"Failed to dispatch step: {label}")
             return {
                 'status': ExecutionStatus.FAILED,
                 'node_id': node_id,
@@ -264,17 +223,21 @@ class WorkflowEngine:
             context['predictable_result'] = step_result
             context[f"{node_id}_result"] = step_result
 
-    def initialize_execution(self, process_id: Optional[int], context: dict = None, user_id: int = None) -> int:
+    def initialize_execution(self, process_id: Optional[int], context: dict = None, user_id: int = None,
+                             process_structure: dict = None) -> int:
         """Create the execution record and return the ID."""
         if process_id is not None:
             process = db.session.get(DefProcess, process_id)
             if not process:
                 raise WorkflowError(f"Process not found: {process_id}")
+            if not process_structure:
+                process_structure = process.process_structure
 
         execution_record = DefProcessExecution(
             process_id=process_id,
             execution_status=ExecutionStatus.RUNNING,
             input_data=context or {},
+            process_structure=process_structure,
             created_by=user_id,
             last_updated_by=user_id
         )
@@ -284,7 +247,11 @@ class WorkflowEngine:
 
     def execute_from_id(self, execution_id: int, on_task_complete: Callable[[dict], None] = None,
                         process_structure: dict = None) -> None:
-        """Resume and run an execution from its ID."""
+        """Dispatch the first (or next) step of an execution, then return.
+
+        The Celery worker is only occupied for the dispatch logic (milliseconds).
+        Subsequent steps are chained via Celery's link callback.
+        """
         execution_record = db.session.get(DefProcessExecution, execution_id)
         if not execution_record:
             raise WorkflowError(f"Execution record not found: {execution_id}")
@@ -293,7 +260,8 @@ class WorkflowEngine:
         user_id = execution_record.created_by
         self._execution_id = execution_id
 
-        structure_to_use = process_structure
+        # Load structure from execution record, then fallback to parameter, then DB
+        structure_to_use = execution_record.process_structure or process_structure
         if not structure_to_use and execution_record.process_id:
             process = db.session.get(DefProcess, execution_record.process_id)
             if process:
@@ -302,87 +270,78 @@ class WorkflowEngine:
         if not structure_to_use:
             raise WorkflowError("No workflow structure found for execution")
 
-        try:
-            self._parse(structure_to_use)
+        self._parse(structure_to_use)
 
-            if execution_record.execution_status == ExecutionStatus.WAITING_ON_TASK and execution_record.current_node_id:
-                current_nodes = self._get_next_nodes(execution_record.current_node_id)
-                execution_record.execution_status = ExecutionStatus.RUNNING
-                execution_record.current_node_id = None
-                db.session.commit()
-            else:
-                start = self._find_start()
-                if not start:
-                    raise WorkflowError("No Start node found")
-                current_nodes = [start]
+        # Ensure structure is saved for async callbacks
+        if not execution_record.process_structure:
+            execution_record.process_structure = structure_to_use
+            db.session.commit()
 
-            while current_nodes:
+        # Determine starting node
+        if execution_record.execution_status == ExecutionStatus.WAITING_ON_TASK and execution_record.current_node_id:
+            current_nodes = self._get_next_nodes(execution_record.current_node_id)
+            execution_record.execution_status = ExecutionStatus.RUNNING
+            execution_record.current_node_id = None
+            db.session.commit()
+        else:
+            start = self._find_start()
+            if not start:
+                raise WorkflowError("No Start node found")
+            current_nodes = [start]
 
+        if not current_nodes:
+            execution_record.execution_status = ExecutionStatus.COMPLETED
+            execution_record.execution_end_date = datetime.utcnow()
+            execution_record.output_data = context
+            db.session.commit()
+            return
 
-                node = current_nodes.pop(0)
-                shape_name = node.get('data', {}).get('type', '')
-                behavior = self._get_behavior(shape_name)
+        # Process nodes synchronously until we hit one that dispatches asynchronously
+        while current_nodes:
+            node = current_nodes.pop(0)
+            node_id = node['id']
 
-                # Create step record
-                step_record = DefProcessExecutionStep(
-                    def_process_execution_id=execution_record.def_process_execution_id,
-                    node_id=node.get('id'),
-                    node_label=node.get('data', {}).get('label', node.get('id')),
-                    task_name=node.get('data', {}).get('step_function', ''),
-                    status=ExecutionStatus.RUNNING,
-                    input_data=context.copy(),
-                    created_by=user_id,
-                    last_updated_by=user_id
-                )
-                db.session.add(step_record)
-                db.session.commit()
+            # Create step record
+            step_record = DefProcessExecutionStep(
+                def_process_execution_id=execution_record.def_process_execution_id,
+                node_id=node_id,
+                node_label=node.get('data', {}).get('label', node_id),
+                task_name=node.get('data', {}).get('step_function', ''),
+                status=ExecutionStatus.RUNNING,
+                input_data=context.copy(),
+                created_by=user_id,
+                last_updated_by=user_id
+            )
+            db.session.add(step_record)
+            db.session.commit()
 
-                # Execute step
-                try:
-                    result = self._execute_step(node, context)
-                except Exception as e:
-                    result = {'status': ExecutionStatus.FAILED, 'error': str(e), 'node_id': node.get('id')}
+            # Dispatch step
+            try:
+                result = self._execute_step_async(node, context)
+            except Exception as e:
+                result = {'status': ExecutionStatus.FAILED, 'error': str(e), 'node_id': node_id}
 
-                # Update step record
-                step_record.status = result.get('status')
-                if 'input_data' in result:
-                    step_record.input_data = result.get('input_data')
-                if result.get('status') == ExecutionStatus.COMPLETED:
-                    step_record.result = result.get('result')
-                step_record.error_message = result.get('error')
+            if on_task_complete:
+                on_task_complete(result)
+
+            status = result.get('status')
+
+            # Pass-through nodes (no async dispatch) — process synchronously and continue
+            if status in ('passed', 'skipped'):
+                step_record.status = status
                 step_record.execution_end_date = datetime.utcnow()
                 db.session.commit()
 
-                if on_task_complete:
-                    on_task_complete(result)
-
-                # Stop execution on failure
-                if result.get('status') == ExecutionStatus.FAILED:
-                    execution_record.execution_status = ExecutionStatus.FAILED
-                    execution_record.execution_end_date = datetime.utcnow()
-                    execution_record.error_message = result.get('error')
-                    db.session.commit()
-                    return
-
-                # Suspend execution on User Task
-                if result.get('status') == ExecutionStatus.WAITING_ON_TASK:
-                    execution_record.execution_status = ExecutionStatus.WAITING_ON_TASK
-                    execution_record.current_node_id = node.get('id')
-                    db.session.commit()
-                    return
-
-                # Update context with step result
-                # NOTE: predictable_result must be set BEFORE _evaluate_decision is called
-                self._update_context(
-                    node_id=node.get('id'),
-                    step_result=result.get('result'),
-                    sf_type=result.get('sf_type', ''),
-                    context=context
-                )
+                shape_name = node.get('data', {}).get('type', '')
+                behavior = self._get_behavior(shape_name)
 
                 # Stop node — end execution
                 if behavior == NodeBehavior.EVENT and shape_name == 'Stop':
-                    break
+                    execution_record.execution_status = ExecutionStatus.COMPLETED
+                    execution_record.execution_end_date = datetime.utcnow()
+                    execution_record.output_data = context
+                    db.session.commit()
+                    return
 
                 # Gateway — evaluate decision
                 if behavior == NodeBehavior.GATEWAY:
@@ -391,37 +350,261 @@ class WorkflowEngine:
                         target_node = self._nodes.get(target_id)
                         if target_node:
                             current_nodes.append(target_node)
+                            continue
                         else:
                             execution_record.error_message = f"Gateway target node '{target_id}' not found"
-                            execution_record.execution_status = ExecutionStatus.FAILED
-                            db.session.commit()
-                            return
                     except Exception as e:
                         execution_record.error_message = f"Gateway evaluation error: {str(e)}"
-                        execution_record.execution_status = ExecutionStatus.FAILED
-                        db.session.commit()
-                        return
-                else:
-                    # Linear flow
-                    next_nodes = self._get_next_nodes(node['id'])
-                    if len(next_nodes) > 1:
-                        logger.warning(f"Node '{node['id']}' has {len(next_nodes)} outgoing edges — only first will be followed")
-                    if next_nodes:
-                        current_nodes.append(next_nodes[0])
+                    execution_record.execution_status = ExecutionStatus.FAILED
+                    execution_record.execution_end_date = datetime.utcnow()
+                    db.session.commit()
+                    return
 
-            # Completed
+                # Linear flow
+                next_nodes = self._get_next_nodes(node_id)
+                if not next_nodes:
+                    execution_record.execution_status = ExecutionStatus.COMPLETED
+                    execution_record.execution_end_date = datetime.utcnow()
+                    execution_record.output_data = context
+                    db.session.commit()
+                    return
+
+                current_nodes.append(next_nodes[0])
+                continue
+
+            # DISPATCHED — async task sent to broker
+            if status == 'DISPATCHED':
+                step_record.celery_task_id = result.get('celery_task_id')
+                step_record.status = 'DISPATCHED'
+                if 'input_data' in result:
+                    step_record.input_data = result.get('input_data')
+                db.session.commit()
+                return
+
+            # FAILED during dispatch
+            step_record.status = ExecutionStatus.FAILED
+            step_record.error_message = result.get('error')
+            if 'input_data' in result:
+                step_record.input_data = result.get('input_data')
+            step_record.execution_end_date = datetime.utcnow()
+            db.session.commit()
+
+            execution_record.execution_status = ExecutionStatus.FAILED
+            execution_record.execution_end_date = datetime.utcnow()
+            execution_record.error_message = result.get('error')
+            db.session.commit()
+            return
+
+        # All nodes exhausted
+        execution_record.execution_status = ExecutionStatus.COMPLETED
+        execution_record.execution_end_date = datetime.utcnow()
+        execution_record.output_data = context
+        db.session.commit()
+
+    def _complete_step_and_advance(self, execution_id: int, node_id: str, executor_result: Any) -> None:
+        """Called when an executor step completes. Updates the step record and dispatches the next node.
+
+        This runs inside the advance_workflow_step Celery task.
+        """
+        execution_record = db.session.get(DefProcessExecution, execution_id)
+        if not execution_record:
+            logger.error(f"Execution not found for advance: {execution_id}")
+            return
+
+        step = DefProcessExecutionStep.query.filter_by(
+            def_process_execution_id=execution_id,
+            node_id=node_id
+        ).order_by(DefProcessExecutionStep.execution_start_date.desc()).first()
+
+        if not step:
+            logger.error(f"Step not found for advance: exec={execution_id}, node={node_id}")
+            return
+
+        context = dict(execution_record.input_data or {})
+        self._execution_id = execution_id
+
+        # Parse graph if not already loaded
+        if not self._nodes:
+            structure = self._load_structure(execution_record)
+            if structure:
+                self._parse(structure)
+
+        # Process executor_result — same logic as old _execute_step result processing
+        if isinstance(executor_result, Exception):
+            self._finalize_step(step, execution_record, ExecutionStatus.FAILED,
+                                error=f"Celery task error: {repr(executor_result)}")
+            return
+
+        actual_result = None
+        error = None
+
+        if isinstance(executor_result, dict):
+            actual_result = executor_result.get('result')
+            error = executor_result.get('error')
+        else:
+            actual_result = executor_result
+
+        if error:
+            self._finalize_step(step, execution_record, ExecutionStatus.FAILED, error=error)
+            return
+
+        if isinstance(actual_result, dict) and actual_result.get('error'):
+            self._finalize_step(step, execution_record, ExecutionStatus.FAILED,
+                                error=actual_result.get('error'), result=actual_result)
+            return
+
+        if isinstance(actual_result, dict) and actual_result.get('status') == ExecutionStatus.WAITING_ON_TASK:
+            step_status = ExecutionStatus.WAITING_ON_TASK
+        else:
+            step_status = ExecutionStatus.COMPLETED
+
+        step.status = step_status
+        step.result = actual_result
+        step.execution_end_date = datetime.utcnow()
+        db.session.commit()
+
+        if step_status == ExecutionStatus.WAITING_ON_TASK:
+            execution_record.execution_status = ExecutionStatus.WAITING_ON_TASK
+            execution_record.current_node_id = node_id
+            db.session.commit()
+            return
+
+        # Update context with step result
+        current_node = self._nodes.get(node_id, {})
+        self._update_context(
+            node_id=node_id,
+            step_result=actual_result,
+            sf_type=step.task_name or '',
+            context=context
+        )
+        execution_record.input_data = context
+        db.session.commit()
+
+        # Determine and dispatch the next node(s)
+        self._dispatch_next_nodes(execution_record, node_id, context)
+
+    def _dispatch_next_nodes(self, execution_record: DefProcessExecution, from_node_id: str, context: dict) -> None:
+        """Find and dispatch the next node(s) after a completed step."""
+        current_node = self._nodes.get(from_node_id)
+        if not current_node:
+            return
+
+        shape_name = current_node.get('data', {}).get('type', '')
+        behavior = self._get_behavior(shape_name)
+        user_id = execution_record.created_by
+
+        # Stop node — end execution
+        if behavior == NodeBehavior.EVENT and shape_name == 'Stop':
             execution_record.execution_status = ExecutionStatus.COMPLETED
             execution_record.execution_end_date = datetime.utcnow()
             execution_record.output_data = context
             db.session.commit()
+            return
 
-        except Exception as e:
-            db.session.rollback()
-            execution_record.execution_status = ExecutionStatus.FAILED
+        # Gateway — evaluate decision
+        if behavior == NodeBehavior.GATEWAY:
+            try:
+                target_id = self._evaluate_decision(current_node, context)
+                target_node = self._nodes.get(target_id)
+                if not target_node:
+                    execution_record.execution_status = ExecutionStatus.FAILED
+                    execution_record.error_message = f"Gateway target node '{target_id}' not found"
+                    execution_record.execution_end_date = datetime.utcnow()
+                    db.session.commit()
+                    return
+                next_nodes = [target_node]
+            except Exception as e:
+                execution_record.execution_status = ExecutionStatus.FAILED
+                execution_record.error_message = f"Gateway evaluation error: {str(e)}"
+                execution_record.execution_end_date = datetime.utcnow()
+                db.session.commit()
+                return
+        else:
+            # Linear flow
+            next_nodes = self._get_next_nodes(from_node_id)
+            if len(next_nodes) > 1:
+                logger.warning(f"Node '{from_node_id}' has {len(next_nodes)} outgoing edges — only first will be followed")
+
+        if not next_nodes:
+            execution_record.execution_status = ExecutionStatus.COMPLETED
             execution_record.execution_end_date = datetime.utcnow()
-            execution_record.error_message = str(e)
+            execution_record.output_data = context
             db.session.commit()
-            raise
+            return
+
+        # Process the next node
+        node = next_nodes[0]
+        node_id = node['id']
+
+        step_record = DefProcessExecutionStep(
+            def_process_execution_id=execution_record.def_process_execution_id,
+            node_id=node_id,
+            node_label=node.get('data', {}).get('label', node_id),
+            task_name=node.get('data', {}).get('step_function', ''),
+            status=ExecutionStatus.RUNNING,
+            input_data=context.copy(),
+            created_by=user_id,
+            last_updated_by=user_id
+        )
+        db.session.add(step_record)
+        db.session.commit()
+
+        result = self._execute_step_async(node, context)
+        status = result.get('status')
+
+        # Pass-through — process synchronously and chain
+        if status in ('passed', 'skipped'):
+            step_record.status = status
+            step_record.execution_end_date = datetime.utcnow()
+            db.session.commit()
+            self._dispatch_next_nodes(execution_record, node_id, context)
+            return
+
+        # DISPATCHED — store task_id, chain continues via callback
+        if status == 'DISPATCHED':
+            step_record.celery_task_id = result.get('celery_task_id')
+            step_record.status = 'DISPATCHED'
+            if 'input_data' in result:
+                step_record.input_data = result.get('input_data')
+            db.session.commit()
+            return
+
+        # FAILED
+        step_record.status = ExecutionStatus.FAILED
+        step_record.error_message = result.get('error')
+        if 'input_data' in result:
+            step_record.input_data = result.get('input_data')
+        step_record.execution_end_date = datetime.utcnow()
+        db.session.commit()
+
+        execution_record.execution_status = ExecutionStatus.FAILED
+        execution_record.execution_end_date = datetime.utcnow()
+        execution_record.error_message = result.get('error')
+        db.session.commit()
+
+    def _load_structure(self, execution_record: DefProcessExecution) -> Optional[dict]:
+        """Load process structure from execution record or linked process."""
+        if execution_record.process_structure:
+            return execution_record.process_structure
+        if execution_record.process_id:
+            process = db.session.get(DefProcess, execution_record.process_id)
+            if process:
+                return process.process_structure
+        return None
+
+    def _finalize_step(self, step: DefProcessExecutionStep, execution: DefProcessExecution,
+                       status: str, error: str = None, result: Any = None) -> None:
+        """Mark a step and its execution as failed/completed."""
+        step.status = status
+        step.error_message = error
+        step.result = result
+        step.execution_end_date = datetime.utcnow()
+        db.session.commit()
+
+        execution.execution_status = status
+        execution.error_message = error
+        execution.execution_end_date = datetime.utcnow()
+        db.session.commit()
 
     def _evaluate_decision(self, node: dict, context: dict) -> str:
         edges = self._edges_by_source.get(node['id'], [])
@@ -457,7 +640,7 @@ class WorkflowEngine:
 
         if execution_record.execution_status != ExecutionStatus.WAITING_ON_TASK:
             raise WorkflowError(f"Execution is not in WAITING_ON_TASK state: {execution_record.execution_status}")
-            
+
         node_id = execution_record.current_node_id
         if not node_id:
             raise WorkflowError("No current_node_id found on execution record to resume from")
@@ -468,7 +651,7 @@ class WorkflowEngine:
         execution_record.input_data = context
         db.session.commit()
 
-        # Resume engine execution
+        # Resume engine execution — dispatches the next step
         self.execute_from_id(execution_id, on_task_complete=on_task_complete)
 
     def validate(self, process_structure: dict) -> List[str]:
