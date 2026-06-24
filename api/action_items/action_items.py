@@ -481,12 +481,23 @@ def update_action_item_assignment_status(user_id, action_item_id):
 
         db.session.commit()
 
-        # ADD — workflow resume check
+        # Check if linked to a workflow execution
         workflow_link = DefExecutionActionItems.query.filter_by(
             action_item_id=action_item_id
         ).first()
 
         if workflow_link:
+            # Store the response data back on the link record
+            workflow_link.response_data = {
+                "status":       data['status'],
+                "response":     data.get('response'),
+                "responded_by": user_id,
+                "responded_at": datetime.utcnow().isoformat()
+            }
+            workflow_link.last_updated_by = get_jwt_identity()
+            workflow_link.last_update_date = datetime.utcnow()
+            db.session.commit()
+
             resume_workflow_task.delay(
                 workflow_link.execution_id,
                 {
