@@ -10,7 +10,6 @@ expected inputs/outputs by:
 
 import os
 import re
-from collections import deque, defaultdict
 from executors.models import DefAsyncTaskParam
 
 
@@ -138,59 +137,4 @@ def build_predecessors(nodes, edges):
     return preds
 
 
-def get_predecessor_outputs(nodes: list, edges: list, target_node_id: str) -> list:
-    """
-    Get all potential output fields from ancestor nodes of the target node.
-    Returns: [ { 'name': 'field_name', 'source_label': 'Task Label' }, ... ]
-    """
-    # Index nodes
-    node_map = {n['id']: n for n in nodes}
-    
-    # Build backward graph
-    parents = defaultdict(list)
-    for e in edges or []:
-        parents[e['target']].append(e['source'])
-        
-    # BFS to find all ancestors
-    ancestors = set()
-    if target_node_id in parents:
-        queue = deque(parents[target_node_id])
-    else:
-        queue = deque()
-        
-    visited = set(queue)
-    
-    while queue:
-        curr = queue.popleft()
-        if curr in ancestors:
-            continue
-        ancestors.add(curr)
-        
-        for p in parents[curr]:
-            if p not in visited:
-                visited.add(p)
-                queue.append(p)
-                
-    # Introspect each ancestor
-    fields = []
-    seen_fields = set()
-    
-    for nid in ancestors:
-        node = node_map.get(nid)
-        if not node: continue
-        
-        script_path = node.get('data', {}).get('step_function')
-        if not script_path or not isinstance(script_path, str): 
-            continue
-            
-        out_keys = introspect_outputs(script_path)
-        for k in out_keys:
-            if k not in seen_fields:
-                seen_fields.add(k)
-                fields.append({
-                    'label': k.replace('_', ' ').title(),
-                    'value': k,
-                    'NodeSourceLabel': node.get('data', {}).get('label', 'Unknown Node')
-                })
-                     
-    return fields
+

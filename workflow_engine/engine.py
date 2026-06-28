@@ -62,11 +62,21 @@ class WorkflowEngine:
     """
 
     def __init__(self):
+        """Initialize empty graph indexes.
+
+        _nodes maps node_id -> node dict; _edges_by_source maps
+        source_node_id -> list of edge dicts. Both are populated
+        by _parse() before each execution.
+        """
         self._nodes: Dict[str, dict] = {}
         self._edges_by_source: Dict[str, List[dict]] = {}
 
     def _parse(self, process_structure: dict) -> None:
-        """Parse nodes and edges into indexed structures."""
+        """Build in-memory indexes from the raw JSON graph.
+
+        Converts the nodes/edges lists into dictionaries keyed by
+        node ID for O(1) lookups during graph traversal.
+        """
         nodes = process_structure.get('nodes', [])
         edges = process_structure.get('edges', [])
 
@@ -80,14 +90,18 @@ class WorkflowEngine:
             self._edges_by_source[src].append(edge)
 
     def _find_start(self) -> Optional[dict]:
-        """Find the Start node."""
+        """Locate the single Start node in the parsed graph.
+
+        Scans all indexed nodes for one with type == 'Start'.
+        Returns None if missing (validation error).
+        """
         for node in self._nodes.values():
             if node.get('data', {}).get('type') == 'Start':
                 return node
         return None
 
     def _get_next_nodes(self, node_id: str) -> List[dict]:
-        """Get nodes connected by outgoing edges."""
+        """Return the node dicts reachable via outgoing edges from node_id."""
         edges = self._edges_by_source.get(node_id, [])
         next_nodes = []
         for edge in edges:
@@ -97,12 +111,21 @@ class WorkflowEngine:
         return next_nodes
 
     def _get_behavior(self, shape_name: str) -> str:
-        """Look up node behavior from DB."""
+        """Determine node behavior (TASK/GATEWAY/EVENT) from the DefProcessNodeType table.
+
+        Falls back to NodeBehavior.TASK if no configuration is found
+        for the given shape_name.
+        """
         node_type_config = DefProcessNodeType.query.filter_by(shape_name=shape_name).first()
         return node_type_config.behavior if node_type_config else NodeBehavior.TASK
 
     def _inject_attributes(self, node: dict, context: dict) -> dict:
-        """Merge predefined node attributes into a copy of context."""
+        """Merge node-level static attributes into a copy of the execution context.
+
+        Each node can define hardcoded attribute_name/attribute_value pairs
+        at design time. These are layered on top of the runtime context so
+        the step sees both.
+        """
         step_context = context.copy()
         for attr in node.get('data', {}).get('attributes', []):
             if isinstance(attr, dict) and 'attribute_name' in attr:
@@ -110,7 +133,15 @@ class WorkflowEngine:
         return step_context
 
     def _execute_step_async(self, node: dict, context: dict) -> dict:
-        """Dispatch a single step node asynchronously via Celery apply_async."""
+        """Dispatch a single workflow node to its Celery executor.
+
+        Resolves step_function -> DefAsyncTask -> executor, filters
+        context to only declared parameters, injects engine plumbing
+        keys (execution_id, current_node_id), and calls the executor's
+        apply_async with a Celery link callback for automatic
+        advancement on completion. Returns DISPATCHED, passed,
+        skipped, or FAILED.
+        """
         node_id = node['id']
         data = node.get('data', {})
         shape_name = data.get('type', '')
@@ -203,7 +234,13 @@ class WorkflowEngine:
             }
 
     def _update_context(self, node_id: str, step_result: Any, sf_type: str, context: dict) -> None:
-        """Merge step result into context."""
+        """Merge a completed step's result into the execution context.
+
+        If result is a JSON string, attempts to parse it as a dict.
+        Dict results are merged key-by-key; scalars are stored under
+        both predictable_result and {node_id}_result. Also ensures
+        {node_id}_result exists for gateway evaluation.
+        """
         if step_result is None:
             return
 
@@ -218,14 +255,26 @@ class WorkflowEngine:
 
         if isinstance(step_result, dict):
             context.update(step_result)
+            if f"{node_id}_result" not in step_result:
+                node_result = (
+                    step_result.get('result')
+                    or step_result.get('output')
+                    or step_result.get('status')
+                )
+                if node_result is not None:
+                    context[f"{node_id}_result"] = node_result
         else:
-            # Scalar result — store as-is (lookup value codes: Y/N/E etc.)
             context['predictable_result'] = step_result
             context[f"{node_id}_result"] = step_result
 
     def initialize_execution(self, process_id: Optional[int], context: dict = None, user_id: int = None,
                              process_structure: dict = None) -> int:
-        """Create the execution record and return the ID."""
+        """Create a DefProcessExecution record and return its primary key.
+
+        Looks up the DefProcess if only process_id is given, then
+        persists the initial context and process_structure JSON so
+        async callbacks can reload them. Status starts as RUNNING.
+        """
         if process_id is not None:
             process = db.session.get(DefProcess, process_id)
             if not process:
@@ -279,10 +328,24 @@ class WorkflowEngine:
 
         # Determine starting node
         if execution_record.execution_status == ExecutionStatus.WAITING_ON_TASK and execution_record.current_node_id:
-            current_nodes = self._get_next_nodes(execution_record.current_node_id)
+            current_node_id = execution_record.current_node_id
+            current_node = self._nodes.get(current_node_id)
+
             execution_record.execution_status = ExecutionStatus.RUNNING
             execution_record.current_node_id = None
             db.session.commit()
+
+            if current_node:
+                shape_name = current_node.get('data', {}).get('type', '')
+                behavior = self._get_behavior(shape_name)
+                if behavior == NodeBehavior.GATEWAY:
+                    target_id = self._evaluate_decision(current_node, context)
+                    target_node = self._nodes.get(target_id)
+                    current_nodes = [target_node] if target_node else []
+                else:
+                    current_nodes = self._get_next_nodes(current_node_id)
+            else:
+                current_nodes = self._get_next_nodes(current_node_id)
         else:
             start = self._find_start()
             if not start:
@@ -402,9 +465,11 @@ class WorkflowEngine:
         db.session.commit()
 
     def _complete_step_and_advance(self, execution_id: int, node_id: str, executor_result: Any) -> None:
-        """Called when an executor step completes. Updates the step record and dispatches the next node.
+        """Celery callback: process a completed step and advance the workflow.
 
-        This runs inside the advance_workflow_step Celery task.
+        Runs inside the advance_workflow_step Celery task. Updates the step
+        record with the executor result, merges it into the execution context,
+        then calls _dispatch_next_nodes to continue graph traversal.
         """
         execution_record = db.session.get(DefProcessExecution, execution_id)
         if not execution_record:
@@ -484,7 +549,13 @@ class WorkflowEngine:
         self._dispatch_next_nodes(execution_record, node_id, context)
 
     def _dispatch_next_nodes(self, execution_record: DefProcessExecution, from_node_id: str, context: dict) -> None:
-        """Find and dispatch the next node(s) after a completed step."""
+        """Walk to and dispatch the next node(s) after an async step completes.
+
+        Called from _complete_step_and_advance. Handles Stop (end),
+        gateway (decision), and linear flows. Synchronously processes
+        pass-through nodes and dispatches async tasks — the same logic
+        as the main loop in execute_from_id.
+        """
         current_node = self._nodes.get(from_node_id)
         if not current_node:
             return
@@ -583,7 +654,11 @@ class WorkflowEngine:
         db.session.commit()
 
     def _load_structure(self, execution_record: DefProcessExecution) -> Optional[dict]:
-        """Load process structure from execution record or linked process."""
+        """Retrieve the process graph JSON from the execution record or its DefProcess.
+
+        Priority: execution_record.process_structure ->
+        DefProcess.process_structure -> None.
+        """
         if execution_record.process_structure:
             return execution_record.process_structure
         if execution_record.process_id:
@@ -594,7 +669,11 @@ class WorkflowEngine:
 
     def _finalize_step(self, step: DefProcessExecutionStep, execution: DefProcessExecution,
                        status: str, error: str = None, result: Any = None) -> None:
-        """Mark a step and its execution as failed/completed."""
+        """Set step and execution record to a terminal status (FAILED/COMPLETED).
+
+        Flushes the error message, result, and end timestamp to both
+        the step and execution rows in the database.
+        """
         step.status = status
         step.error_message = error
         step.result = result
@@ -607,14 +686,24 @@ class WorkflowEngine:
         db.session.commit()
 
     def _evaluate_decision(self, node: dict, context: dict) -> str:
-        edges = self._edges_by_source.get(node['id'], [])
+        """Evaluate a GATEWAY node and return the ID of the matching target node.
+
+        Reads {node_id}_result (or fallback predictable_result) from
+        context and compares it against each outgoing edge's lookup_value.
+        Raises WorkflowError if no edge matches.
+        """
+        node_id = node['id']
+        edges = self._edges_by_source.get(node_id, [])
         label = node.get('data', {}).get('label', node.get('id'))
 
         if not edges:
             raise WorkflowError(f"Decision node '{label}' has no outgoing edges")
 
-        actual_val = str(context.get('predictable_result', '')).strip().lower()
-        logger.debug(f"Decision '{label}': predictable_result={actual_val!r}")
+        # Read from node-scoped key first, fall back to global predictable_result
+        actual_val = str(
+            context.get(f"{node_id}_result") or context.get('predictable_result', '')
+        ).strip().lower()
+        logger.debug(f"Decision '{label}': {node_id}_result={actual_val!r}")
 
         for edge in edges:
             edge_data = edge.get('data') or {}
@@ -626,14 +715,24 @@ class WorkflowEngine:
 
     def run(self, process_id: int, context: dict = None, user_id: int = None,
             on_task_complete: Callable[[dict], None] = None) -> dict:
-        """Synchronous run for backward compatibility."""
+        """Convenience wrapper: initialize and execute a workflow synchronously.
+
+        Creates the execution record, dispatches steps, and returns
+        the final execution record as JSON. Legacy API — prefer
+        initialize_execution + execute_from_id for async usage.
+        """
         execution_id = self.initialize_execution(process_id, context, user_id)
         self.execute_from_id(execution_id, on_task_complete)
         execution = db.session.get(DefProcessExecution, execution_id)
         return execution.json()
 
     def resume_execution(self, execution_id: int, task_result: dict, on_task_complete: Callable[[dict], None] = None) -> None:
-        """Resume execution from a suspended state with the provided task result."""
+        """Resume a WAITING_ON_TASK execution with a result from an external source.
+
+        Merges the provided task_result into the execution context,
+        then calls execute_from_id to continue graph traversal from
+        the saved current_node_id.
+        """
         execution_record = db.session.get(DefProcessExecution, execution_id)
         if not execution_record:
             raise WorkflowError(f"Execution record not found: {execution_id}")
@@ -655,7 +754,11 @@ class WorkflowEngine:
         self.execute_from_id(execution_id, on_task_complete=on_task_complete)
 
     def validate(self, process_structure: dict) -> List[str]:
-        """Validate process structure."""
+        """Validate a process graph structure for correctness.
+
+        Parses the nodes/edges and checks that a Start node exists.
+        Returns a list of error messages (empty = valid).
+        """
         errors = []
         try:
             self._parse(process_structure)
@@ -668,6 +771,6 @@ class WorkflowEngine:
 
 def run_workflow(process_id: int, context: dict = None, user_id: int = None,
                  on_task_complete: Callable[[dict], None] = None) -> dict:
-    """Convenience function to run a workflow."""
+    """Module-level shortcut: instantiate a WorkflowEngine and call run()."""
     engine = WorkflowEngine()
     return engine.run(process_id, context, user_id, on_task_complete)

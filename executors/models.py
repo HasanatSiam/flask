@@ -1293,6 +1293,17 @@ class DefProcessExecutionStep(db.Model):
     last_updated_by = db.Column(db.Integer)
     last_update_date = db.Column(db.DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
+    @staticmethod
+    def _clean_input_data(data: dict) -> dict:
+        """Strip internal engine plumbing from input_data."""
+        if not isinstance(data, dict):
+            return data
+        internal_keys = {'current_node_id', 'execution_id', 'predictable_result'}
+        return {
+            k: v for k, v in data.items()
+            if k not in internal_keys and not k.endswith('_result')
+        }
+
     def json(self):
         return {
             'def_execution_step_id': self.def_execution_step_id,
@@ -1302,7 +1313,7 @@ class DefProcessExecutionStep(db.Model):
             'task_name': self.task_name,
             'status': self.status,
             'celery_task_id': self.celery_task_id,
-            'input_data': self.input_data,
+            'input_data': self._clean_input_data(self.input_data) if self.input_data else None,
             'result': self.result,
             'error_message': self.error_message,
             'execution_start_date': self.execution_start_date.isoformat() if self.execution_start_date else None,
@@ -1391,6 +1402,7 @@ class DefActionItemsV(db.Model):
     creation_date = db.Column(db.DateTime(timezone=True))
     last_updated_by = db.Column(db.Integer)
     last_update_date = db.Column(db.DateTime(timezone=True))
+    lookup_values = db.Column(db.JSON, nullable=True)
 
     def json(self):
         return {
@@ -1405,7 +1417,8 @@ class DefActionItemsV(db.Model):
             'created_by': self.created_by,
             'creation_date': self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by': self.last_updated_by,
-            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None,
+            'lookup_values': self.lookup_values
         }
 
 class DefActionItemAssignment(db.Model):

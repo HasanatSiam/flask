@@ -95,100 +95,88 @@ def get_workflow_execution_steps():
 def stream_execution(execution_id):
     """
     SSE endpoint for real-time workflow execution status.
-    
+
     Streams events:
-    - event: 'step'      — individual step status update (new step or status changed)
-    - event: 'complete'   — final execution result when workflow finishes
-    - event: 'heartbeat'  — periodic keep-alive (every ~15s)
-    - event: 'error'      — error notification
-    - event: 'timeout'    — stream exceeded max duration
-    
-    Supports SSE reconnection via Last-Event-ID header.
+    - event: 'step'      — individual step status update
+    - event: 'complete'  — final execution result
+    - event: 'heartbeat' — periodic keep-alive (every ~15s)
+    - event: 'error'     — error notification
+    - event: 'timeout'   — stream exceeded max duration
     """
     current_user = get_jwt_identity()
     if not current_user:
         return jsonify({"error": "Authentication required"}), 401
-    
+
     app = current_app._get_current_object()
-    
+
     def _sse(event, data, event_id=None):
-        """Format and encode a single SSE message."""
         parts = []
         if event_id is not None:
             parts.append(f"id: {event_id}")
         parts.append(f"event: {event}")
         parts.append(f"data: {json.dumps(data)}")
         return ("\n".join(parts) + "\n\n").encode('utf-8')
-    
+
     def generate():
         with app.app_context():
-            last_step_states = {}        # {step_id: status}
-            event_counter = 0            # SSE event ID for reconnection
-            max_wait_seconds = 3600      # 1 hour max stream duration
-            consecutive_errors = 0       # Track DB/query errors
-            max_consecutive_errors = 5   # Give up after 5 consecutive failures
+            last_step_states = {}
+            event_counter = 0
+            max_wait_seconds = 3600
+            consecutive_errors = 0
+            max_consecutive_errors = 5
             start_time = time.time()
-            last_heartbeat = 0           # Throttle heartbeats
-            
+            last_heartbeat = 0
+
             try:
                 while True:
                     elapsed = time.time() - start_time
                     if elapsed > max_wait_seconds:
                         yield _sse('timeout', {'message': 'Stream timeout'})
                         break
-                    
+
                     try:
-                        # Rollback closes current transaction snapshot so the next
-                        # query sees committed changes from other sessions/threads
                         db.session.rollback()
-                        
+
                         execution = DefProcessExecution.query.get(execution_id)
                         if not execution:
                             yield _sse('error', {'message': 'Execution not found'})
                             break
-                        
+
                         steps = DefProcessExecutionStep.query.filter_by(
                             def_process_execution_id=execution_id
                         ).order_by(DefProcessExecutionStep.execution_start_date.asc()).all()
-                        
+
                         current_status = execution.execution_status
-                        consecutive_errors = 0  # Reset on successful query
-                            
-                        # Emit only new or changed steps
+                        consecutive_errors = 0
+
                         for step in steps:
                             s_id = step.def_execution_step_id
                             s_status = step.status
-                            
                             if s_id not in last_step_states or last_step_states[s_id] != s_status:
                                 event_counter += 1
                                 yield _sse('step', step.json(), event_counter)
                                 last_step_states[s_id] = s_status
 
-                        # Check completion
-                        if current_status not in ['RUNNING', 'QUEUED']:
+                        if current_status not in ['RUNNING', 'WAITING_ON_TASK']:
                             event_counter += 1
                             yield _sse('complete', execution.json(), event_counter)
                             break
-                        
-                        # Throttled heartbeat — every 5 seconds
+
                         if elapsed - last_heartbeat >= 5:
                             event_counter += 1
                             yield _sse('heartbeat', {'status': current_status}, event_counter)
                             last_heartbeat = elapsed
-                        
+
                     except Exception as e:
                         consecutive_errors += 1
                         app.logger.error(f"Stream error for execution {execution_id}: {e}")
                         yield _sse('error', {'message': f'Stream error: {str(e)}'})
-                        
                         if consecutive_errors >= max_consecutive_errors:
                             yield _sse('error', {'message': 'Too many consecutive errors, closing stream'})
                             break
-                        
                         time.sleep(2)
-                        continue  # Skip the normal polling sleep
-                        
-                    # Adaptive polling interval
+                        continue
+
                     if elapsed < 60:
                         time.sleep(1.0)
                     elif elapsed < 300:
@@ -217,3 +205,64 @@ def stream_execution(execution_id):
             'X-Accel-Buffering': 'no'
         }
     )
+
+
+@workflow_bp.route('/workflow/execution/live/<int:execution_id>', methods=['GET'])
+@jwt_required()
+# @role_required()
+def poll_execution_live(execution_id):
+    """
+    Poll endpoint for live workflow execution status.
+
+    Client polls every ~2s. The response tells you:
+      - What's running RIGHT NOW (current_step_id)
+      - All steps so far (diff by def_execution_step_id)
+      - Whether the workflow is done
+
+    Query params:
+      - node_id  (optional) — filter steps to return only this node's step
+
+    Response:
+    {
+      "execution_id":    445,
+      "status":          "RUNNING" | "WAITING_ON_TASK" | "COMPLETED" | "FAILED",
+      "current_step_id": 5,                        // the step currently RUNNING/DISPATCHED
+      "steps":           [ ... all steps ... ],    // filtered by node_id if provided
+      "done":            false
+    }
+    """
+    try:
+        node_id = request.args.get('node_id')
+
+        execution = DefProcessExecution.query.get(execution_id)
+        if not execution:
+            return jsonify({"error": "Execution not found"}), 404
+
+        steps_query = DefProcessExecutionStep.query.filter_by(
+            def_process_execution_id=execution_id
+        )
+
+        if node_id:
+            steps_query = steps_query.filter_by(node_id=node_id)
+
+        steps = steps_query.order_by(
+            DefProcessExecutionStep.execution_start_date.asc()
+        ).all()
+
+        # Derive current_step_id from steps array — no second DB query
+        current_step_id = None
+        for s in steps:
+            if s.status in ('RUNNING', 'DISPATCHED'):
+                current_step_id = s.def_execution_step_id
+
+        return jsonify({
+            "execution_id":     execution_id,
+            "status":           execution.execution_status,
+            "current_node_id":  execution.current_node_id,
+            "current_step_id":  current_step_id,
+            "steps":            [s.json() for s in steps],
+            "done":             execution.execution_status not in ['RUNNING', 'WAITING_ON_TASK']
+        }), 200
+
+    except Exception as e:
+        return jsonify({"message": "Error polling execution", "error": str(e)}), 500

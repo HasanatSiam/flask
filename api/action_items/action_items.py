@@ -46,7 +46,10 @@ def get_action_items():
         if user_id:
             # User View: Filter by user_id and notification_status='sent'
             query = DefActionItemsV.query.filter_by(user_id=user_id).filter(
-                func.lower(func.trim(DefActionItemsV.notification_status)) == "sent"
+                or_(
+                    func.lower(func.trim(DefActionItemsV.notification_status)) == "sent",
+                    DefActionItemsV.notification_status.is_(None)
+                )
             )
             
             # Additional filters for User View
@@ -486,6 +489,13 @@ def update_action_item_assignment_status(user_id, action_item_id):
             action_item_id=action_item_id
         ).first()
 
+        response = {
+            "message":        "Status Updated Successfully",
+            "action_item_id": action_item_id,
+            "status":         data['status'],
+            "user_id":        user_id
+        }
+
         if workflow_link:
             # Store the response data back on the link record
             workflow_link.response_data = {
@@ -500,12 +510,19 @@ def update_action_item_assignment_status(user_id, action_item_id):
             resume_workflow_task.delay(
                 workflow_link.execution_id,
                 {
-                    "predictable_result": data['status'],
-                    "responded_by":       user_id
+                    "predictable_result":             data['status'],
+                    f"{workflow_link.node_id}_result": data['status'],
+                    "responded_by":                   user_id
                 }
             )
 
-        return make_response(jsonify({"message": "Status Updated Successfully"}), 200)
+            response["workflow_link"] = {
+                "execution_id":  workflow_link.execution_id,
+                "node_id":       workflow_link.node_id,
+                "response_data": workflow_link.response_data
+            }
+
+        return make_response(jsonify(response), 200)
 
     except Exception as e:
         db.session.rollback()
