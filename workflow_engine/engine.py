@@ -730,7 +730,8 @@ class WorkflowEngine:
         """Resume a WAITING_ON_TASK execution with a result from an external source.
 
         Merges the provided task_result into the execution context,
-        then calls execute_from_id to continue graph traversal from
+        updates the paused step's result with the response, then
+        calls execute_from_id to continue graph traversal from
         the saved current_node_id.
         """
         execution_record = db.session.get(DefProcessExecution, execution_id)
@@ -743,6 +744,15 @@ class WorkflowEngine:
         node_id = execution_record.current_node_id
         if not node_id:
             raise WorkflowError("No current_node_id found on execution record to resume from")
+
+        # Update the paused step's result with the task response
+        step = DefProcessExecutionStep.query.filter_by(
+            def_process_execution_id=execution_id,
+            node_id=node_id,
+            status=ExecutionStatus.WAITING_ON_TASK
+        ).first()
+        if step:
+            step.result = task_result
 
         # Update context
         context = dict(execution_record.input_data or {})
