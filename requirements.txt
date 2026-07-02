@@ -3,7 +3,8 @@ flask
 sqlalchemy 
 flask_sqlalchemy 
 psycopg2-binary 
-flask_jwt_extended 
+flask_jwt_extended
+PyJWT
 flask_cors 
 requests 
 gunicorn
