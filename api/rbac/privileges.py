@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Flask, request, jsonify, make_response       # Flask utilities for handling requests and responses
+from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 

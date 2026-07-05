@@ -1,6 +1,6 @@
 import json
 import time
-import logging
+
 
 from flask import request, jsonify, Response, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity

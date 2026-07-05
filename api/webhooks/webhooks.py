@@ -196,14 +196,22 @@ def update_webhook_with_subscriptions():
         current_user_id = get_jwt_identity()
 
         # Update webhook details
-        if 'webhook_name' in data:     webhook.webhook_name     = data['webhook_name']
-        if 'webhook_url' in data:      webhook.webhook_url      = data['webhook_url']
-        if 'secret_key' in data:       webhook.secret_key       = data['secret_key']
-        if 'extra_headers' in data:    webhook.extra_headers    = data['extra_headers']
-        if 'filters' in data:          webhook.filters          = data['filters']
-        if 'selected_columns' in data: webhook.selected_columns = data['selected_columns']
-        if 'is_active' in data:        webhook.is_active        = data['is_active'].upper()
-        if 'max_retries' in data:      webhook.max_retries      = data['max_retries']
+        if 'webhook_name' in data:
+            webhook.webhook_name     = data['webhook_name']
+        if 'webhook_url' in data:
+            webhook.webhook_url      = data['webhook_url']
+        if 'secret_key' in data:
+            webhook.secret_key       = data['secret_key']
+        if 'extra_headers' in data:
+            webhook.extra_headers    = data['extra_headers']
+        if 'filters' in data:
+            webhook.filters          = data['filters']
+        if 'selected_columns' in data:
+            webhook.selected_columns = data['selected_columns']
+        if 'is_active' in data:
+            webhook.is_active        = data['is_active'].upper()
+        if 'max_retries' in data:
+            webhook.max_retries      = data['max_retries']
         
         webhook.last_updated_by  = current_user_id
         webhook.last_update_date = datetime.utcnow()

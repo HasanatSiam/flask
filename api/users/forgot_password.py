@@ -125,7 +125,7 @@ def verify_request():
         req_obj = DefForgotPasswordRequest.query.filter(
             DefForgotPasswordRequest.forgot_password_request_id == request_id,
             DefForgotPasswordRequest.request_by == user_id_from_token,
-            DefForgotPasswordRequest.is_valid == True
+            DefForgotPasswordRequest.is_valid
         ).first()
 
         if not req_obj:

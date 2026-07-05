@@ -2,7 +2,6 @@
 
 from celery import current_app as celery  # Access the current Celery app
 
-from celery.schedules import schedule as celery_schedule
 
 import logging
 from executors.extensions import db 
@@ -51,7 +50,7 @@ def execute_ad_hoc_task(user_schedule_name, task_name, executor, args, kwargs, c
         db.session.add(new_schedule)
         db.session.commit()
 
-        logging.info(f"Ad-hoc task executed and logged successfully.")
+        logging.info("Ad-hoc task executed and logged successfully.")
 
         # Return a success response
         return {
@@ -112,7 +111,7 @@ def execute_ad_hoc_task_v1(user_schedule_name, task_name, executor, args, kwargs
         db.session.add(new_schedule)
         db.session.commit()
 
-        logging.info(f"Ad-hoc task executed and logged successfully.")
+        logging.info("Ad-hoc task executed and logged successfully.")
 
         # Return a success response
         return {

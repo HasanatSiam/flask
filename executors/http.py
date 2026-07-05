@@ -3,7 +3,7 @@ from celery import shared_task
 
 @shared_task(bind=True)
 def execute(self, *args, **kwargs):
-    script_name = args[0] if len(args) > 0 else None  # Will be None for HTTP executor
+    _ = args[0] if len(args) > 0 else None  # Will be None for HTTP executor
     user_task_name = args[1] if len(args) > 1 else None
     task_name = args[2] if len(args) > 2 else None
     user_schedule_name = args[3] if len(args) > 3 else None

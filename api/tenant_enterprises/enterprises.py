@@ -1,5 +1,4 @@
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_
 from datetime import datetime
 from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
 

@@ -2,8 +2,8 @@ import json
 import sys
 import io
 import os
-from celery import shared_task, states
-from celery.exceptions import Ignore, CeleryError, Reject
+from celery import shared_task
+from celery.exceptions import Ignore
 
 
 script_path = os.getenv("SCRIPT_PATH_01")

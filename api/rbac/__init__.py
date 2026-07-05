@@ -2,10 +2,11 @@ from flask import Blueprint
 
 rbac_bp = Blueprint("rbac_bp", __name__)
 
-from .privileges import *
-from .roles import *
-from .api_endpoints import *
-from .api_endpoint_roles import *
-from .user_granted_roles import *
-from .user_granted_privileges import *
-from .user_granted_roles_privileges import *
+from . import privileges
+from . import roles
+from . import api_endpoints
+from . import api_endpoint_roles
+from . import user_granted_roles
+from . import user_granted_privileges
+from . import user_granted_roles_privileges
+# from .rbac_sync import *

@@ -2,11 +2,11 @@ from flask import Blueprint
 
 users_bp = Blueprint("users_bp", __name__)
 
-from .defusers import *
-from .defpersons  import *
-from .user_credentials import *
-from .users import *
-from .access_profiles import *
-from .new_user_invitations import *
-from .forgot_password import *
+from . import defusers
+from . import defpersons
+from . import user_credentials
+from . import users
+from . import access_profiles
+from . import new_user_invitations
+from . import forgot_password
 

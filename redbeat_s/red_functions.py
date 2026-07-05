@@ -75,31 +75,7 @@ def create_redbeat_schedule(schedule_name, executor, schedule_minutes=None, cron
 
     return {"message": "Task scheduled successfully!", "entry_name": entry.name}
 
-    args = args or []
-    kwargs = kwargs or {}
 
-    # Define the schedule interval
-    schedule_seconds = schedule_minutes * 60
-
-    try:
-        # Fetch the existing RedBeat entry
-        entry = RedBeatSchedulerEntry.from_key(f"redbeat:{schedule_name}", app=celery_app)
-        # Validate if the task_name matches
-        if entry.task != task:
-            raise ValueError(f"Task name mismatch: Expected {task}, found {entry.task}")
-        
-        # Update entry fields
-        entry.schedule = celery_schedule(schedule_seconds)  # Use celery.schedules.schedule for intervals
-        entry.args = args  # Update args with extended values
-        entry.kwargs = kwargs  # Update kwargs if provided
-
-        # Save the updated entry back to Redis
-        entry.save()
-        print(f"RedBeat entry updated: {entry.name}")
-
-    except Exception as e:
-        print(f"Failed to update RedBeat entry: {e}")
-        raise
 
 
 def update_redbeat_schedule(schedule_name, task, schedule_minutes=None, cron_schedule=None, args=None, kwargs=None, celery_app=None):

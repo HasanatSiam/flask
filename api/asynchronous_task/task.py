@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from utils.auth import role_required
 from executors.extensions import db
 from executors.models import (
-    DefAsyncTask, DefAsyncTasksV, DefLookup, DefLookupValue, VwLookupWithValues,
+    DefAsyncTask, DefAsyncTasksV, DefLookup, VwLookupWithValues,
     DefTaskGroup, DefTaskGroupMember
 )
 from . import async_task_bp

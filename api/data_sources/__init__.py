@@ -2,6 +2,6 @@ from flask import Blueprint
 
 data_sources_bp = Blueprint("data_sources_bp", __name__)
 
-from .data_sources import *
-from .connections import *
-from .application_types import *
+from . import data_sources
+from . import connections
+from . import application_types

@@ -1,12 +1,11 @@
-from flask import request, jsonify, make_response
+from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_token, decode_token
 from werkzeug.security import generate_password_hash
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask_mail import Message as MailMessage
 
 from utils.auth import encrypt, decrypt
 from config import crypto_secret_key, invitation_expire_time, mail, REACT_ENDPOINT_URL
-from sqlalchemy import or_
 
 from utils.auth import role_required
 from executors.extensions import db

@@ -199,7 +199,7 @@ def Delete_ExecutionMethod(internal_execution_method):
         db.session.delete(execution_method)
         db.session.commit()
 
-        return jsonify({"message": f"Deleted successfully"}), 200
+        return jsonify({"message": "Deleted successfully"}), 200
 
     except Exception as e:
         return jsonify({"error": "Failed to delete execution method", "details": str(e)}), 500
