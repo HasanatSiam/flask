@@ -6,11 +6,7 @@ import uuid
 import logging
 from celery.schedules import crontab     
 from sqlalchemy import or_
-from datetime import datetime
-from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
 
-from flask_mail import Message as MailMessage
-from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from executors.extensions import db
 from celery import current_app as celery  # Access the current Celery app
@@ -19,7 +15,6 @@ from ad_hoc.ad_hoc_functions import execute_ad_hoc_task_v1
 
 
 from utils.auth import role_required
-from executors.extensions import db
 from executors.models import (
     DefAsyncTask,
     DefAsyncTaskParam,

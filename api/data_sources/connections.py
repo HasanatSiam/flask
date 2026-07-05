@@ -115,14 +115,16 @@ def update_connection():
             return make_response(jsonify({"message": "def_connection_id required"}), 400)
 
         conn = DefDataSourceConnection.query.get(conn_id)
-        if not conn: return make_response(jsonify({"message": "Not found"}), 404)
+        if not conn: 
+            return make_response(jsonify({"message": "Not found"}), 404)
 
         data = request.get_json()
         if not data:
             return make_response(jsonify({"message": "No JSON payload provided"}), 400)
         
         for field in ['host', 'port', 'database_name', 'username', 'connection_type', 'is_active', 'additional_params', 'def_data_source_id']:
-            if field in data: setattr(conn, field, data[field])
+            if field in data: 
+                setattr(conn, field, data[field])
         
         if 'password' in data and data['password']:
             conn.password = data['password']
@@ -147,7 +149,8 @@ def delete_connection():
             return make_response(jsonify({"message": "def_connection_id required"}), 400)
             
         conn = DefDataSourceConnection.query.get(conn_id)
-        if not conn: return make_response(jsonify({"message": "Not found"}), 404)
+        if not conn: 
+            return make_response(jsonify({"message": "Not found"}), 404)
         
         db.session.delete(conn)
         db.session.commit()

@@ -2,7 +2,6 @@ import os
 import psycopg2
 from celery import shared_task
 import logging
-import json
 
 logging.basicConfig(level=logging.INFO)
 

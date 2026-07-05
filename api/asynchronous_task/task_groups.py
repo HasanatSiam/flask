@@ -4,7 +4,7 @@ from datetime import datetime
 
 from utils.auth import role_required
 from executors.extensions import db
-from executors.models import DefTaskGroup, DefTaskGroupMember, DefAsyncTask
+from executors.models import DefTaskGroup
 from . import async_task_bp
 
 

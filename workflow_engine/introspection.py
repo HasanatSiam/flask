@@ -87,7 +87,8 @@ def introspect_outputs(script_path):
             doc_block = re.sub(r'\(.*?\)', '', doc_block)
             for line in doc_block.split('\n'):
                 line = line.strip()
-                if not line: continue
+                if not line: 
+                    continue
                 line = re.sub(r'[—\-].*', '', line)
                 for k in re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', line):
                     if k.lower() not in EXCLUDED_KEYS and k.lower() != 'and':

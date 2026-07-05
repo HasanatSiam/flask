@@ -2,7 +2,7 @@ from datetime import datetime
 from flask import request, jsonify, make_response 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.auth import role_required
-from sqlalchemy import or_, create_engine, text
+from sqlalchemy import or_
 from executors.extensions import db
 from executors.models import (
     DefDataSource, DefDataSourceConnection, DefAccessPoint, DefAccessEntitlementElement,

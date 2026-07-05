@@ -106,9 +106,12 @@ def update_application_type():
         if not data:
             return make_response(jsonify({"message": "No JSON payload provided"}), 400)
         
-        if 'application_type' in data: app_type.application_type = data['application_type']
-        if 'versions' in data: app_type.versions = data['versions']
-        if 'description' in data: app_type.description = data['description']
+        if 'application_type' in data: 
+            app_type.application_type = data['application_type']
+        if 'versions' in data: 
+            app_type.versions = data['versions']
+        if 'description' in data: 
+            app_type.description = data['description']
         
         app_type.last_updated_by = get_jwt_identity()
         app_type.last_update_date = datetime.utcnow()

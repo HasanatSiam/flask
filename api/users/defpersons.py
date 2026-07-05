@@ -160,6 +160,6 @@ def delete_person(user_id):
             db.session.commit()
             return make_response(jsonify({'message': 'Deleted successfully'}), 200)
         return make_response(jsonify({'message': 'Person not found'}), 404)
-    except:
+    except Exception:
         return make_response(jsonify({'message': 'Error deleting user'}), 500)
 

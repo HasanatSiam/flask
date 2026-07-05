@@ -2,14 +2,9 @@ from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_, func
 from utils.auth import role_required
 from executors.extensions import db
-from executors.models import (
-    DefActionItemAssignment,
-    DefActionItemsV,
-
-)
+from executors.models import DefActionItemAssignment
 from . import action_items_bp
 
 

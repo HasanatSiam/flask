@@ -45,7 +45,7 @@ def create_tenant():
        db.session.commit()
        return make_response(jsonify({"message": "Added successfully", "result": new_tenant.json()}), 201)
    
-    except IntegrityError as e:
+    except IntegrityError:
         return make_response(jsonify({"message": "Error creating Tenant", "error": "Tenant already exists"}), 409)
     except Exception as e:
         return make_response(jsonify({"message": "Error creating Tenant", "error": str(e)}), 500)

@@ -1,11 +1,8 @@
 import json
 from sqlalchemy import desc
 from flask import request, jsonify, make_response
-from werkzeug.security import generate_password_hash
-from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from executors.extensions import db
-from utils.auth import role_required
 from executors.models import( Message )
 from . import messages_bp
 
@@ -62,7 +59,7 @@ def create_message():
         involvedusers = data['involvedusers']
         readers       = data['readers']
         
-        receiver_json = json.dumps(recivers)
+        _ = json.dumps(recivers)
         involvedusers = json.dumps(involvedusers)
         
         new_message = Message(

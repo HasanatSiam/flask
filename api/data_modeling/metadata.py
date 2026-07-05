@@ -1,7 +1,7 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from utils.auth import role_required
-from sqlalchemy import text, inspect, and_, case, create_engine
+from sqlalchemy import text, inspect, create_engine
 import datetime
 from decimal import Decimal
 from urllib.parse import quote_plus

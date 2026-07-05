@@ -137,5 +137,5 @@ def delete_user_credentials(user_id):
             db.session.commit()
             return make_response(jsonify({'message': 'Deleted successfully'}), 200)
         return make_response(jsonify({'message': 'User not found'}), 404)
-    except:
+    except Exception:
         return make_response(jsonify({'message': 'Error deleting user credentials'}), 500)

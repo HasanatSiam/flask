@@ -90,10 +90,14 @@ def manage_node_type():
                      return jsonify({"error": f"Shape name '{new_shape}' already exists"}), 409
                  node_type.shape_name = new_shape
                  
-        if 'behavior' in data: node_type.behavior = data['behavior']
-        if 'display_name' in data: node_type.display_name = data['display_name']
-        if 'requires_step_function' in data: node_type.requires_step_function = data['requires_step_function']
-        if 'description' in data: node_type.description = data['description']
+        if 'behavior' in data: 
+            node_type.behavior = data['behavior']
+        if 'display_name' in data: 
+            node_type.display_name = data['display_name']
+        if 'requires_step_function' in data: 
+            node_type.requires_step_function = data['requires_step_function']
+        if 'description' in data: 
+            node_type.description = data['description']
         
         node_type.last_updated_by = get_jwt_identity()
         node_type.last_update_date = datetime.utcnow()

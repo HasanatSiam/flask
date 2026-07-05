@@ -2,11 +2,10 @@ import ast
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from datetime import datetime
-from datetime import datetime, timedelta
+from datetime import timedelta
 import requests
 from sqlalchemy import or_
 from utils.auth import role_required
-from executors.extensions import db
 from executors.models import (
     DefAsyncTaskRequest
 
@@ -177,7 +176,7 @@ def combined_tasks_v3(page, limit):
             res = requests.get(f"{FLOWER_URL}/api/tasks", timeout=5)
             if res.status_code == 200:
                 flower_tasks = res.json()
-        except:
+        except Exception:
             pass  # keep flower_tasks empty if error
 
         items = []
@@ -248,7 +247,7 @@ def combined_tasks_v4(page, limit):
             res = requests.get(f"{FLOWER_URL}/api/tasks", timeout=5)
             if res.status_code == 200:
                 flower_tasks = res.json()
-        except:
+        except Exception:
             pass  # keep flower_tasks empty if error
 
         items = []

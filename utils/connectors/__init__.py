@@ -11,4 +11,4 @@ from .manager import ConnectorManager
 from . import sql_handler
 from . import servicenow_handler
 
-__all__ = ['ConnectorManager']
+__all__ = ['ConnectorManager', 'sql_handler', 'servicenow_handler']

@@ -535,7 +535,6 @@ class WorkflowEngine:
             return
 
         # Update context with step result
-        current_node = self._nodes.get(node_id, {})
         self._update_context(
             node_id=node_id,
             step_result=actual_result,

@@ -13,8 +13,8 @@ from flask import current_app
 
 from executors.extensions import db
 from executors.models import DefProcess, DefAsyncTask
-from workflow_engine.engine import WorkflowEngine, WorkflowError, ExecutionStatus
-from workflow_engine.tasks import execute_workflow_task, resume_workflow_task
+from workflow_engine.engine import WorkflowEngine, WorkflowError
+from workflow_engine.tasks import execute_workflow_task
 from workflow_engine.introspection import (
     introspect_inputs,
     introspect_outputs,
@@ -357,8 +357,6 @@ def get_required_params():
                 script_cache[cache_key] = introspect_outputs(path)
             return script_cache[cache_key]
         
-        # Build node lookup maps
-        node_map = {n['id']: n for n in nodes}
         
         # Introspect outputs for all nodes
         node_outputs = {}
