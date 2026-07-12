@@ -1,50 +1,52 @@
-# from .manager import ConnectorManager, BaseHandler
+import requests
+from .manager import ConnectorManager, BaseConnector
 
-# try:
-#     import cdata.servicenow as servicenow
-# except ImportError:
-#     servicenow = None
-
-# @ConnectorManager.register("servicenow")
-# class ServiceNowHandler(BaseHandler):
+@ConnectorManager.register("servicenow")
+class ServiceNowConnector(BaseConnector):
     
-#     def _get_connection(self, config):
-#         if not servicenow:
-#             raise ImportError("CData ServiceNow driver is not installed.")
+    def _build_session(self) -> requests.Session:
+        session = requests.Session()
+        
+        username = self.config.get('username', '')
+        # TODO: Implement credential vault decryption here once ready
+        # e.g., plaintext_password = credential_vault.decrypt(self.config.get('password', ''))
+        plaintext_password = self.config.get('password', '')
+        
+        if username and plaintext_password:
+            session.auth = (username, plaintext_password)
             
-#         user = config.get('username', '')
-#         password = config.get('password', '')
-#         url = config.get('host', '')
+        additional = self.config.get('additional_params', {})
+        # Configure additional session parameters if needed (e.g., headers)
         
-#         # Build connection string (CData expects a connection string, not kwargs)
-#         conn_parts = []
-        
-#         if user:
-#             conn_parts.append(f"User={user}")
-#         if password:
-#             conn_parts.append(f"Password={password}")
-#         if url:
-#             conn_parts.append(f"Url={url}")
-        
-#         # Add additional parameters (e.g., AuthScheme, OAuth settings, etc.)
-#         additional = config.get('additional_params', {})
-#         if additional:
-#             for key, value in additional.items():
-#                 conn_parts.append(f"{key}={value}")
-        
-#         # Join all parts with semicolons
-#         conn_string = ";".join(conn_parts)
-        
-#         return servicenow.connect(conn_string)
+        return session
 
-#     def test(self, config):
-#         """Test ServiceNow connection."""
-#         try:
-#             conn = self._get_connection(config)
-#             cursor = conn.cursor()
-#             cursor.execute("SELECT 1")
-#             cursor.close()
-#             conn.close()
-#             return True, "Connection successful"
-#         except Exception as e:
-#             return False, str(e)
+    @property
+    def base_url(self) -> str:
+        host = self.config.get('host', '').rstrip('/')
+        if not host.startswith('http'):
+            host = f"https://{host}"
+        return host
+
+    def test_connection(self) -> tuple:
+        """Test ServiceNow connection using the Table API."""
+        try:
+            session = self._build_session()
+            url = f"{self.base_url}/api/now/table/sys_user?sysparm_limit=1"
+            resp = session.get(url, timeout=10)
+            
+            if resp.status_code == 200:
+                return True, "Connection successful"
+            else:
+                return False, f"HTTP {resp.status_code}: {resp.text}"
+        except Exception as e:
+            return False, str(e)
+
+    def fetch_access_points(self) -> list[dict]:
+        """Return normalized access point records for sync."""
+        # Placeholder for paginating through sys_user_role / sys_security_acl
+        return []
+
+    def fetch_entitlements(self, access_point: dict) -> list[dict]:
+        """Return entitlements for a specific access point."""
+        # Placeholder for future implementation
+        return []

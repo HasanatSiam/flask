@@ -14,7 +14,11 @@ from executors.extensions import db
 from executors.models import DefAsyncTask, DefProcess, DefProcessNodeType, DefProcessExecution, DefProcessExecutionStep, DefAsyncTaskParam
 
 # Import executors
-from executors import run_script, bash_script, execute_procedure, execute_function, http_request
+from executors.python import execute as run_script
+from executors.bash import execute as bash_script
+from executors.stored_procedure import execute as execute_procedure
+from executors.stored_function import execute as execute_function
+from executors.http import execute as http_request
 
 logger = logging.getLogger(__name__)
 
