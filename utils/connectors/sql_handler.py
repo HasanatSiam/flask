@@ -41,7 +41,6 @@ class ConnectionRegistry:
 connection_registry = ConnectionRegistry()
 
 @ConnectorManager.register("postgresql")
-@ConnectorManager.register("oracle")
 @ConnectorManager.register("mysql")
 class SQLAlchemyConnector(BaseConnector):
     
@@ -61,8 +60,7 @@ class SQLAlchemyConnector(BaseConnector):
 
         dialect_map = {
             'postgresql': 'postgresql+psycopg2',
-            'oracle': 'oracle+oracledb',
-            'mysql': 'mysql+pymysql'  # or mysqlclient depending on environment
+            'mysql': 'mysql+pymysql'
         }
         
         dialect = dialect_map.get(conn_type, 'postgresql+psycopg2')
@@ -70,7 +68,6 @@ class SQLAlchemyConnector(BaseConnector):
         # Default ports if not specified
         if not port:
             if conn_type == 'postgresql': port = 5432
-            elif conn_type == 'oracle': port = 1521
             elif conn_type == 'mysql': port = 3306
             else: port = 5432
 

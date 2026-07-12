@@ -24,3 +24,4 @@ blueprint
 Flask-Mail
 pycryptodome
 flask-caching
+pymysql
