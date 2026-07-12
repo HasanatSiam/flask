@@ -177,3 +177,13 @@ def test_saved_connection(def_connection_id):
     except Exception as e:
         return make_response(jsonify({"success": False, "message": str(e)}), 500)
 
+
+@data_sources_bp.route('/def_data_source_connections/supported_types', methods=['GET'])
+@jwt_required()
+@role_required()
+def get_supported_connection_types():
+    try:
+        types = ConnectorManager.get_supported_types()
+        return make_response(jsonify({"result": types}), 200)
+    except Exception as e:
+        return make_response(jsonify({"message": str(e)}), 500)
