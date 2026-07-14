@@ -7,6 +7,7 @@ from decimal import Decimal
 from urllib.parse import quote_plus
 from executors.extensions import db
 from executors.models import InfoSchemaTable, InfoSchemaColumn, DefDataSource, DefDataSourceConnection
+from utils.connectors import ConnectorManager
 
 from . import data_modeling_bp
 
@@ -30,23 +31,25 @@ def _get_engine_for_datasource(datasource_name):
     if not connection:
         raise ValueError(f"No active connection found for datasource '{datasource_name}'")
     
-    # Build connection URI (currently supports PostgreSQL)
-    if connection.connection_type.lower() == 'postgresql':
-        host = connection.host or 'localhost'
-        port = connection.port or 5432
-        database = connection.database_name or ''
-        username = quote_plus(connection.username or '')
-        password = quote_plus(connection.password or '')
-        
-        uri = f"postgresql+psycopg2://{username}:{password}@{host}:{port}/{database}"
-        
-        # Add SSL mode if specified
-        if connection.additional_params and 'sslmode' in connection.additional_params:
-            uri += f"?sslmode={connection.additional_params['sslmode']}"
-        
-        return create_engine(uri, pool_pre_ping=True)
-    else:
-        raise ValueError(f"Unsupported connection type: {connection.connection_type}")
+    # Build connection configuration for ConnectorManager
+    config = {
+        'def_connection_id': connection.def_connection_id,
+        'connection_type': connection.connection_type,
+        'host': connection.host,
+        'port': connection.port,
+        'database_name': connection.database_name,
+        'username': connection.username,
+        'password': connection.password,
+        'additional_params': connection.additional_params
+    }
+    
+    try:
+        connector = ConnectorManager.get_connector(connection.connection_type, config)
+        if not hasattr(connector, 'engine'):
+            raise ValueError(f"Connector for type '{connection.connection_type}' does not provide an engine")
+        return connector.engine
+    except ValueError as e:
+        raise ValueError(f"Failed to get engine for datasource '{datasource_name}': {str(e)}")
 
 
 def _serialize_data(obj):
@@ -123,7 +126,7 @@ def tables_handler():
         # /tables?schema=public
         # ---------------------------------
         schemas = inspector.get_schema_names()
-        system_schemas = {'information_schema', 'pg_catalog', 'pg_toast'}
+        system_schemas = {'information_schema', 'pg_catalog', 'pg_toast', 'mysql', 'performance_schema', 'sys'}
 
         if schema_name:
             schemas = [schema_name]
@@ -247,7 +250,7 @@ def get_datasource_metadata():
 
         # Get all schemas
         schemas = inspector.get_schema_names()
-        system_schemas = {'information_schema', 'pg_catalog', 'pg_toast'}
+        system_schemas = {'information_schema', 'pg_catalog', 'pg_toast', 'mysql', 'performance_schema', 'sys'}
 
         # Filter out system schemas
         schemas = [
@@ -320,7 +323,7 @@ def get_table_columns():
                     schemas = [schema_name]
                 else:
                     all_schemas = inspector.get_schema_names()
-                    system_schemas = {'information_schema', 'pg_catalog', 'pg_toast'}
+                    system_schemas = {'information_schema', 'pg_catalog', 'pg_toast', 'mysql', 'performance_schema', 'sys'}
                     schemas = [
                         s for s in all_schemas
                         if s not in system_schemas and not s.startswith('pg_toast_')
@@ -356,11 +359,17 @@ def get_table_columns():
                 engine.dispose()
                 raise e
 
-        schema_name = request.args.get('schema', 'public')
+        schema_name = request.args.get('schema')
 
         # Get engine for the datasource
         engine = _get_engine_for_datasource(datasource_name)
         inspector = inspect(engine)
+
+        if not schema_name:
+            if engine.dialect.name == 'postgresql':
+                schema_name = 'public'
+            elif engine.dialect.name == 'mysql':
+                schema_name = engine.url.database
 
         # Check table or view existence
         if not inspector.has_table(table_name, schema=schema_name):
@@ -432,7 +441,7 @@ def get_table_data():
                 'message': 'datasource_name query parameter is required'
             }), 400)
 
-        schema_name = request.args.get('schema', 'public')
+        schema_name = request.args.get('schema')
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 10))
         offset = (page - 1) * per_page
@@ -440,6 +449,12 @@ def get_table_data():
         # Get engine for the datasource
         engine = _get_engine_for_datasource(datasource_name)
         inspector = inspect(engine)
+
+        if not schema_name:
+            if engine.dialect.name == 'postgresql':
+                schema_name = 'public'
+            elif engine.dialect.name == 'mysql':
+                schema_name = engine.url.database
 
         # Check table or view existence
         if not inspector.has_table(table_name, schema=schema_name):
@@ -468,11 +483,18 @@ def get_table_data():
                 ordered_columns.append(col)
 
         # Build paginated query with explicit column order
-        quoted_cols = [f'"{c}"' for c in ordered_columns]
-        columns_str = ", ".join(quoted_cols)
-        
-        count_query = text(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"')
-        data_query = text(f'SELECT {columns_str} FROM "{schema_name}"."{table_name}" LIMIT :limit OFFSET :offset')
+        if engine.dialect.name == 'mysql':
+            quoted_cols = [f'`{c}`' for c in ordered_columns]
+            columns_str = ", ".join(quoted_cols)
+            
+            count_query = text(f'SELECT COUNT(*) FROM `{schema_name}`.`{table_name}`')
+            data_query = text(f'SELECT {columns_str} FROM `{schema_name}`.`{table_name}` LIMIT :limit OFFSET :offset')
+        else:
+            quoted_cols = [f'"{c}"' for c in ordered_columns]
+            columns_str = ", ".join(quoted_cols)
+            
+            count_query = text(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"')
+            data_query = text(f'SELECT {columns_str} FROM "{schema_name}"."{table_name}" LIMIT :limit OFFSET :offset')
 
         with engine.connect() as connection:
             # Get total count
