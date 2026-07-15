@@ -1,7 +1,7 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from utils.auth import role_required
-from sqlalchemy import text, inspect
+from sqlalchemy import inspect
 import datetime
 from decimal import Decimal
 from executors.extensions import db
