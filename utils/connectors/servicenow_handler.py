@@ -271,6 +271,14 @@ class ServiceNowConnector(BaseConnector):
             )
 
         data = resp.json().get('result', [])
+
+        # Flatten reference fields: ServiceNow returns them as
+        # {"value": "<sys_id>", "link": "<url>"} — collapse to the raw sys_id.
+        for row in data:
+            for key, val in row.items():
+                if isinstance(val, dict) and "value" in val:
+                    row[key] = val["value"]
+
         total_count = int(resp.headers.get('X-Total-Count', len(data)))
         total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
 
