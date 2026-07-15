@@ -56,3 +56,15 @@ class BaseConnector:
     def fetch_entitlements(self, access_point: dict) -> list[dict]:
         """Return entitlements for a specific access point."""
         raise NotImplementedError()
+
+    def get_datasource_metadata(self) -> dict:
+        """Returns metadata about schemas and tables in the datasource."""
+        raise NotImplementedError()
+
+    def get_table_columns(self, table_name: str, schema: str = None) -> list[dict]:
+        """Returns column definitions for a specific table."""
+        raise NotImplementedError()
+
+    def get_table_data(self, table_name: str, schema: str = None, limit: int = 10, offset: int = 0) -> dict:
+        """Returns paginated data for a specific table."""
+        raise NotImplementedError()

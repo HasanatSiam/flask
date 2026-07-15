@@ -1,10 +1,9 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from utils.auth import role_required
-from sqlalchemy import text, inspect, create_engine
+from sqlalchemy import text, inspect
 import datetime
 from decimal import Decimal
-from urllib.parse import quote_plus
 from executors.extensions import db
 from executors.models import InfoSchemaTable, InfoSchemaColumn, DefDataSource, DefDataSourceConnection
 from utils.connectors import ConnectorManager
@@ -12,17 +11,15 @@ from utils.connectors import ConnectorManager
 from . import data_modeling_bp
 
 
-def _get_engine_for_datasource(datasource_name):
+def _get_connector_for_datasource(datasource_name):
     """
-    Helper function to get SQLAlchemy engine for a specific datasource.
-    Looks up datasource by name and creates engine from connection details.
+    Helper function to get a connector for a specific datasource.
+    Looks up datasource by name and instantiates connector.
     """
-    # Find datasource by name
     datasource = DefDataSource.query.filter_by(datasource_name=datasource_name).first()
     if not datasource:
         raise ValueError(f"Datasource '{datasource_name}' not found")
     
-    # Get active connection for this datasource
     connection = DefDataSourceConnection.query.filter_by(
         def_data_source_id=datasource.def_data_source_id,
         is_active=True
@@ -31,7 +28,6 @@ def _get_engine_for_datasource(datasource_name):
     if not connection:
         raise ValueError(f"No active connection found for datasource '{datasource_name}'")
     
-    # Build connection configuration for ConnectorManager
     config = {
         'def_connection_id': connection.def_connection_id,
         'connection_type': connection.connection_type,
@@ -45,11 +41,9 @@ def _get_engine_for_datasource(datasource_name):
     
     try:
         connector = ConnectorManager.get_connector(connection.connection_type, config)
-        if not hasattr(connector, 'engine'):
-            raise ValueError(f"Connector for type '{connection.connection_type}' does not provide an engine")
-        return connector.engine
+        return connector
     except ValueError as e:
-        raise ValueError(f"Failed to get engine for datasource '{datasource_name}': {str(e)}")
+        raise ValueError(f"Failed to get connector for datasource '{datasource_name}': {str(e)}")
 
 
 def _serialize_data(obj):
@@ -244,43 +238,11 @@ def get_datasource_metadata():
                 'message': 'datasource_name query parameter is required'
             }), 400)
 
-        # Get engine for the datasource
-        engine = _get_engine_for_datasource(datasource_name)
-        inspector = inspect(engine)
+        connector = _get_connector_for_datasource(datasource_name)
+        metadata = connector.get_datasource_metadata()
+        metadata["datasource_name"] = datasource_name
 
-        # Get all schemas
-        schemas = inspector.get_schema_names()
-        system_schemas = {'information_schema', 'pg_catalog', 'pg_toast', 'mysql', 'performance_schema', 'sys'}
-
-        # Filter out system schemas
-        schemas = [
-            s for s in schemas
-            if s not in system_schemas and not s.startswith('pg_toast_')
-        ]
-
-        all_data = []
-        total_count = 0
-
-        for schema in schemas:
-            tables = inspector.get_table_names(schema=schema)
-            views = inspector.get_view_names(schema=schema)
-            objects = sorted(tables + views)
-
-            if objects:
-                all_data.append({
-                    "schema": schema,
-                    "tables": objects
-                })
-                total_count += len(objects)
-
-        # Dispose engine
-        engine.dispose()
-
-        return make_response(jsonify({
-            "datasource_name": datasource_name,
-            "result": all_data,
-            "total_tables": total_count
-        }), 200)
+        return make_response(jsonify(metadata), 200)
 
     except ValueError as ve:
         return make_response(jsonify({
@@ -307,100 +269,54 @@ def get_table_columns():
     try:
         table_name = request.args.get('table_name')
         datasource_name = request.args.get('datasource_name')
+        schema_name = request.args.get('schema')
         
         if not datasource_name:
             return make_response(jsonify({
                 'message': 'datasource_name query parameter is required'
             }), 400)
 
+        connector = _get_connector_for_datasource(datasource_name)
+
         if not table_name:
-            schema_name = request.args.get('schema')
-            engine = _get_engine_for_datasource(datasource_name)
-            try:
-                inspector = inspect(engine)
+            metadata = connector.get_datasource_metadata()
+            result_list = []
+            for schema_info in metadata.get("result", []):
+                s = schema_info["schema"]
+                if schema_name and s != schema_name:
+                    continue
+                for t in schema_info["tables"]:
+                    try:
+                        cols = connector.get_table_columns(t, schema=s)
+                        col_names = [c["name"] for c in cols]
+                    except Exception:
+                        col_names = []
+                    
+                    entry = {
+                        "table": t,
+                        "columns": col_names
+                    }
+                    if not schema_name:
+                        entry["schema"] = s
+                    
+                    result_list.append(entry)
 
-                if schema_name:
-                    schemas = [schema_name]
-                else:
-                    all_schemas = inspector.get_schema_names()
-                    system_schemas = {'information_schema', 'pg_catalog', 'pg_toast', 'mysql', 'performance_schema', 'sys'}
-                    schemas = [
-                        s for s in all_schemas
-                        if s not in system_schemas and not s.startswith('pg_toast_')
-                    ]
-                
-                result_list = []
-                for s in schemas:
-                    tables = inspector.get_table_names(schema=s)
-                    for t in tables:
-                        cols = inspector.get_columns(t, schema=s)
-                        col_names = [c['name'] for c in cols]
-                        
-                        entry = {
-                            "table": t,
-                            "columns": col_names
-                        }
-                        if not schema_name:
-                            entry["schema"] = s
-                        
-                        result_list.append(entry)
+            response = {
+                "datasource_name": datasource_name,
+                "result": result_list
+            }
+            if schema_name:
+                response["schema"] = schema_name
+            
+            return make_response(jsonify(response), 200)
 
-                response = {
-                    "datasource_name": datasource_name,
-                    "result": result_list
-                }
-                if schema_name:
-                    response["schema"] = schema_name
-                
-                engine.dispose()
-                return make_response(jsonify(response), 200)
-
-            except Exception as e:
-                engine.dispose()
-                raise e
-
-        schema_name = request.args.get('schema')
-
-        # Get engine for the datasource
-        engine = _get_engine_for_datasource(datasource_name)
-        inspector = inspect(engine)
-
-        if not schema_name:
-            if engine.dialect.name == 'postgresql':
-                schema_name = 'public'
-            elif engine.dialect.name == 'mysql':
-                schema_name = engine.url.database
-
-        # Check table or view existence
-        if not inspector.has_table(table_name, schema=schema_name):
-            views = inspector.get_view_names(schema=schema_name)
-            if table_name not in views:
-                engine.dispose()
-                return make_response(jsonify({
-                    "message": f"Table or View '{table_name}' not found in schema '{schema_name}'"
-                }), 404)
-
-        # Get columns
-        columns = inspector.get_columns(table_name, schema=schema_name)
-
-        column_details = []
-        for col in columns:
-            column_details.append({
-                "name": col['name'],
-                "type": str(col['type']),
-                "nullable": col.get('nullable'),
-                "default": str(col.get('default')) if col.get('default') else None,
-                "primary_key": col.get('primary_key', False)
-            })
-
-        # Dispose engine
-        engine.dispose()
+        columns = connector.get_table_columns(table_name, schema=schema_name)
 
         return make_response(jsonify({
             "datasource_name": datasource_name,
             "schema": schema_name,
             "table": table_name,
-            "result": column_details
+            "result": columns
         }), 200)
 
     except ValueError as ve:
@@ -423,7 +339,7 @@ def get_table_data():
     Query params: 
         - table_name (required)
         - datasource_name (required)
-        - schema (optional, default='public')
+        - schema (optional)
         - page (optional, default=1)
         - per_page (optional, default=10)
     """
@@ -446,85 +362,14 @@ def get_table_data():
         per_page = int(request.args.get('per_page', 10))
         offset = (page - 1) * per_page
 
-        # Get engine for the datasource
-        engine = _get_engine_for_datasource(datasource_name)
-        inspector = inspect(engine)
-
-        if not schema_name:
-            if engine.dialect.name == 'postgresql':
-                schema_name = 'public'
-            elif engine.dialect.name == 'mysql':
-                schema_name = engine.url.database
-
-        # Check table or view existence
-        if not inspector.has_table(table_name, schema=schema_name):
-            views = inspector.get_view_names(schema=schema_name)
-            if table_name not in views:
-                engine.dispose()
-                return make_response(jsonify({
-                    "message": f"Table or View '{table_name}' not found in schema '{schema_name}'"
-                }), 404)
-
-        # Get all columns and primary keys
-        all_columns = inspector.get_columns(table_name, schema=schema_name)
-        column_names = [c['name'] for c in all_columns]
+        connector = _get_connector_for_datasource(datasource_name)
+        data = connector.get_table_data(table_name, schema=schema_name, limit=per_page, offset=offset)
         
-        pk_constraint = inspector.get_pk_constraint(table_name, schema=schema_name)
-        primary_keys = pk_constraint.get('constrained_columns', [])
+        data["datasource_name"] = datasource_name
+        data["schema"] = schema_name
+        data["table"] = table_name
 
-        # Order columns: Primary Keys first, then the rest
-        ordered_columns = []
-        for pk in primary_keys:
-            if pk in column_names:
-                ordered_columns.append(pk)
-        
-        for col in column_names:
-            if col not in ordered_columns:
-                ordered_columns.append(col)
-
-        # Build paginated query with explicit column order
-        if engine.dialect.name == 'mysql':
-            quoted_cols = [f'`{c}`' for c in ordered_columns]
-            columns_str = ", ".join(quoted_cols)
-            
-            count_query = text(f'SELECT COUNT(*) FROM `{schema_name}`.`{table_name}`')
-            data_query = text(f'SELECT {columns_str} FROM `{schema_name}`.`{table_name}` LIMIT :limit OFFSET :offset')
-        else:
-            quoted_cols = [f'"{c}"' for c in ordered_columns]
-            columns_str = ", ".join(quoted_cols)
-            
-            count_query = text(f'SELECT COUNT(*) FROM "{schema_name}"."{table_name}"')
-            data_query = text(f'SELECT {columns_str} FROM "{schema_name}"."{table_name}" LIMIT :limit OFFSET :offset')
-
-        with engine.connect() as connection:
-            # Get total count
-            total_count = connection.execute(count_query).scalar()
-            
-            # Get paginated data
-            result = connection.execute(data_query, {"limit": per_page, "offset": offset})
-            
-            # Convert result rows to list of dicts and handle serialization
-            data = []
-            for row in result:
-                # RowMapping handles order as per the SELECT statement
-                row_dict = dict(row._mapping)
-                data.append(_serialize_data(row_dict))
-
-        # Dispose engine
-        engine.dispose()
-
-        # Calculate total pages
-        total_pages = (total_count + per_page - 1) // per_page
-
-        return make_response(jsonify({
-            "datasource_name": datasource_name,
-            "schema": schema_name,
-            "table": table_name,
-            "page": page,
-            "pages": total_pages,
-            "total": total_count,
-            "result": data
-        }), 200)
+        return make_response(jsonify(data), 200)
 
     except ValueError as ve:
         return make_response(jsonify({
