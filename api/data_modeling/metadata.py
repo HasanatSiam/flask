@@ -296,7 +296,7 @@ def get_table_columns():
                         "table": t,
                         "columns": col_names
                     }
-                    if not schema_name:
+                    if not schema_name and s is not None:
                         entry["schema"] = s
                     
                     result_list.append(entry)
@@ -312,12 +312,15 @@ def get_table_columns():
 
         columns = connector.get_table_columns(table_name, schema=schema_name)
 
-        return make_response(jsonify({
+        response = {
             "datasource_name": datasource_name,
-            "schema": schema_name,
             "table": table_name,
             "result": columns
-        }), 200)
+        }
+        if schema_name is not None:
+            response["schema"] = schema_name
+
+        return make_response(jsonify(response), 200)
 
     except ValueError as ve:
         return make_response(jsonify({
@@ -366,8 +369,9 @@ def get_table_data():
         data = connector.get_table_data(table_name, schema=schema_name, limit=per_page, offset=offset)
         
         data["datasource_name"] = datasource_name
-        data["schema"] = schema_name
         data["table"] = table_name
+        if schema_name is not None:
+            data["schema"] = schema_name
 
         return make_response(jsonify(data), 200)
 
