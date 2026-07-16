@@ -174,13 +174,12 @@ class ServiceNowConnector(BaseConnector):
 
         Rather than enumerating all 900+ sys_db_object entries, we return a
         static whitelist of the tables that matter for ITSM/CMDB integrations.
-        Tables are grouped under a single 'servicenow' schema to match the
-        expected { result: [{ schema, tables }] } contract used by the API layer.
+        Schema is None because ServiceNow has no database schema concept.
         """
         return {
             "result": [
                 {
-                    "schema": "servicenow",
+                    "schema": None,
                     "tables": list(self.CORE_TABLES)
                 }
             ],
