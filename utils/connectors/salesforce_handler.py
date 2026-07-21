@@ -25,6 +25,22 @@ class SalesforceConnector(BaseConnector):
         "reference": "reference",  # lookup / master-detail relationship field
     }
 
+    # The most common Salesforce objects used for integrations.
+    CORE_TABLES = [
+        "Account",
+        "Contact",
+        "Lead",
+        "Opportunity",
+        "Campaign",
+        "Case",
+        "Task",
+        "Event",
+        "User",
+        "Product2",
+        "PricebookEntry",
+        "Order"
+    ]
+
     # ------------------------------------------------------------------
     # Internal: client construction
     # ------------------------------------------------------------------
@@ -171,11 +187,13 @@ class SalesforceConnector(BaseConnector):
 
     def get_datasource_metadata(self) -> dict:
         """
-        Returns all queryable Salesforce Objects.
+        Returns the curated list of core Salesforce Objects.
         Schema is None because Salesforce has no database schema concept.
         """
         queryable = self._get_queryable_objects()
-        tables = sorted(queryable)
+        
+        # Only return the core tables that actually exist in the org and are queryable
+        tables = sorted(t for t in self.CORE_TABLES if t in queryable)
 
         return {
             "result": [
