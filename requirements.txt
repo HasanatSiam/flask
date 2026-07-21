@@ -25,3 +25,4 @@ Flask-Mail
 pycryptodome
 flask-caching
 pymysql
+simple-salesforce
