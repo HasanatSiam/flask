@@ -26,3 +26,4 @@ pycryptodome
 flask-caching
 pymysql
 simple-salesforce
+pymongo

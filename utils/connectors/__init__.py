@@ -2,7 +2,6 @@
 Connector Package
 =================
 Exports the ConnectorManager which automatically registers all handlers.
-In this simplified version, only PostgreSQL is registered.
 """
 
 from .manager import ConnectorManager
@@ -11,5 +10,6 @@ from .manager import ConnectorManager
 from . import sql_handler
 from . import servicenow_handler
 from . import salesforce_handler
+from . import mongodb_handler
 
-__all__ = ['ConnectorManager', 'sql_handler', 'servicenow_handler', 'salesforce_handler']
+__all__ = ['ConnectorManager', 'sql_handler', 'servicenow_handler', 'salesforce_handler', 'mongodb_handler']
