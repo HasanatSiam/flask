@@ -220,7 +220,6 @@ def update_specific_user(user_id):
         user = DefUser.query.filter_by(user_id=user_id).first()
         if not user:
             return make_response(jsonify({'message': 'User not found'}), 404)
-        
 
         # --- Username & Email uniqueness check ---
         new_user_name     = data.get('user_name')

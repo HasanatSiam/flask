@@ -1,6 +1,6 @@
 from flask_jwt_extended import get_jwt_identity
 from functools import wraps
-from flask import request, jsonify, make_response
+from flask import request, jsonify, make_response, g
 import hashlib
 from Crypto.Cipher import AES
 import base64
@@ -42,6 +42,13 @@ def role_required():
                     DefUser,
                     int(current_user_id)
                 )
+
+                # Attach user and tokens to request context (g.user & request.user)
+                g.user = user
+                g.user_id = current_user_id
+                g.access_token = request.cookies.get("access_token") or (request.headers.get("Authorization", "").replace("Bearer ", "") if request.headers.get("Authorization") else None)
+                g.refresh_token = request.cookies.get("refresh_token")
+                request.user = user
 
                 user_tenant_id = user.tenant_id if user else None
 
