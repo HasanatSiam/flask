@@ -1,7 +1,14 @@
 from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import create_access_token, create_refresh_token, set_access_cookies, set_refresh_cookies
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    set_access_cookies,
+    set_refresh_cookies,
+    unset_jwt_cookies,
+    verify_jwt_in_request,
+)
 from sqlalchemy import func
 from datetime import datetime
 from utils.auth import role_required
@@ -46,7 +53,13 @@ def login():
         if not check_password_hash(user_cred.password, password):
             return jsonify({"message": "Invalid email/username or password."}), 401
 
-        additional_claims = {"isLoggedIn": True, "user_id": user_id}
+        additional_claims = {
+            "isLoggedIn": True,
+            "user_id": user_id,
+            "user_name": user_record.user_name if user_record else None,
+            "email_address": user_record.email_address if user_record else None,
+            "tenant_id": user_record.tenant_id if user_record else None,
+        }
         access_token  = create_access_token(identity=str(user_id), additional_claims=additional_claims)
         refresh_token = create_refresh_token(identity=str(user_id))
 
@@ -58,11 +71,121 @@ def login():
             "message":       "Log in Successful."
         }))
 
+        response.set_cookie('access_token', access_token, httponly=True, samesite='Lax', path='/')
+        response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='Lax', path='/')
         set_access_cookies(response, access_token)
         set_refresh_cookies(response, refresh_token)
 
         return response, 200
 
+    except Exception as e:
+        return jsonify({"message": str(e)}), 500
+
+
+@users_bp.route('/auth/refresh-token', methods=['GET', 'POST'])
+def refresh_token():
+    try:
+        verify_jwt_in_request(refresh=True)
+        current_user_id = get_jwt_identity()
+
+        user_id_val = int(current_user_id) if (current_user_id and str(current_user_id).isdigit()) else current_user_id
+
+        # Verify user exists in DB if DB accessible
+        try:
+            user_record = DefUser.query.get(user_id_val)
+            if user_record is None and db.session.query(DefUser).first() is not None:
+                response = make_response(jsonify({"message": "Invalid or expired refresh token"}))
+                unset_jwt_cookies(response)
+                return response, 401
+        except Exception:
+            pass
+
+        additional_claims = {"isLoggedIn": True, "user_id": user_id_val}
+        new_access_token = create_access_token(identity=str(current_user_id), additional_claims=additional_claims)
+        new_refresh_token = create_refresh_token(identity=str(current_user_id))
+
+        response = make_response(jsonify({
+            "isLoggedIn": True,
+            "user_id": user_id_val,
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "message": "Token refreshed successfully."
+        }))
+
+        response.set_cookie('access_token', new_access_token, httponly=True, samesite='Lax', path='/')
+        response.set_cookie('refresh_token', new_refresh_token, httponly=True, samesite='Lax', path='/')
+        set_access_cookies(response, new_access_token)
+        set_refresh_cookies(response, new_refresh_token)
+
+        return response, 200
+
+    except Exception as e:
+        response = make_response(jsonify({
+            "message": f"Unauthorized Access: Token has expired or is invalid ({str(e)})"
+        }))
+        unset_jwt_cookies(response)
+        return response, 401
+
+
+@users_bp.route('/auth/user', methods=['GET'])
+def get_auth_user():
+    try:
+        verify_jwt_in_request(optional=True)
+        current_user_id = get_jwt_identity()
+
+        if not current_user_id:
+            response = make_response(jsonify({
+                "isLoggedIn": False,
+                "user_id": None,
+                "message": "No active session.",
+                "access_token": None,
+                "refresh_token": None
+            }))
+            unset_jwt_cookies(response)
+            return response, 401
+
+        user_id_val = int(current_user_id) if (current_user_id and str(current_user_id).isdigit()) else current_user_id
+        additional_claims = {"isLoggedIn": True, "user_id": user_id_val}
+        access_token = create_access_token(identity=str(current_user_id), additional_claims=additional_claims)
+        refresh_token = create_refresh_token(identity=str(current_user_id))
+
+        response = make_response(jsonify({
+            "isLoggedIn": True,
+            "user_id": user_id_val,
+            "message": "User session fetched successfully.",
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }))
+
+        set_access_cookies(response, access_token)
+        set_refresh_cookies(response, refresh_token)
+
+        return response, 200
+
+    except Exception as e:
+        response = make_response(jsonify({
+            "isLoggedIn": False,
+            "user_id": None,
+            "message": f"Session error: {str(e)}",
+            "access_token": None,
+            "refresh_token": None
+        }))
+        unset_jwt_cookies(response)
+        return response, 401
+
+
+
+@users_bp.route('/logout', methods=['POST', 'GET'])
+def logout():
+    try:
+        response = make_response(jsonify({
+            "isLoggedIn": False,
+            "message": "Log out Successful."
+        }))
+        unset_jwt_cookies(response)
+        response.delete_cookie('access_token', path='/')
+        response.delete_cookie('refresh_token', path='/')
+        return response, 200
     except Exception as e:
         return jsonify({"message": str(e)}), 500
 
