@@ -8,14 +8,12 @@ from flask import Flask
 from flask_mail import Mail
 from executors.extensions import cache
 
-# load_dotenv()
-
-# Production server: load .env from a specific path
-ENV_PATH = "/d01/def/app/server/.server_env"
-if os.path.exists(ENV_PATH):
-    load_dotenv(ENV_PATH)
+# ── Cross-Platform Environment Loader (Linux Server & Local Windows)
+SERVER_ENV_PATH = "/d01/def/app/server/.server_env"
+if os.path.exists(SERVER_ENV_PATH):
+    load_dotenv(SERVER_ENV_PATH)
 else:
-    print(f"Error: The .env file was not found at {ENV_PATH}")
+    load_dotenv()
 
 
 # ── Environment Variables
@@ -133,10 +131,13 @@ def create_app() -> Flask:
         JWT_SECRET_KEY              = os.getenv("JWT_SECRET_ACCESS_TOKEN"),
         JWT_ACCESS_TOKEN_EXPIRES    = parse_expiry(os.getenv("ACCESS_TOKEN_EXPIRED_TIME", "15m")),
         JWT_REFRESH_TOKEN_EXPIRES   = parse_expiry(os.getenv("REFRESH_TOKEN_EXPIRED_TIME", "30d")),
-        JWT_TOKEN_LOCATION          = ["headers", "query_string", "cookies"],
+        JWT_TOKEN_LOCATION          = ["cookies", "headers", "query_string"],
         JWT_ACCESS_COOKIE_NAME      = "access_token",
         JWT_REFRESH_COOKIE_NAME     = "refresh_token",
-        JWT_COOKIE_CSRF_PROTECT     = True,
+        JWT_COOKIE_CSRF_PROTECT     = False,
+        JWT_CSRF_CHECK_FORM         = False,
+        JWT_CSRF_IN_COOKIES         = False,
+        JWT_CSRF_METHODS            = [],
         JWT_QUERY_STRING_NAME       = "access_token",
 
         # ── Mail
@@ -160,6 +161,12 @@ def create_app() -> Flask:
 
     # Load any FLASK_-prefixed env vars (overrides the above if set)
     app.config.from_prefixed_env()
+
+    # Explicitly enforce CSRF disabled on cookie/JWT requests across all platforms
+    app.config["JWT_COOKIE_CSRF_PROTECT"] = False
+    app.config["JWT_CSRF_CHECK_FORM"] = False
+    app.config["JWT_CSRF_IN_COOKIES"] = False
+    app.config["JWT_CSRF_METHODS"] = []
 
     # ── Initialize Extensions
     celery_init_app(app)
