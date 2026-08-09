@@ -3,15 +3,12 @@ from dotenv import load_dotenv
 from config import create_app
 from .extensions import db
 
-load_dotenv()
-# Define the path where the .env file is stored
-# ENV_PATH = "/d01/def/app/server/.server_env"
-
-# Load the .env file (check if it exists before loading it)
-# if os.path.exists(ENV_PATH):
-#     load_dotenv(ENV_PATH)
-# else:
-#     print(f"Error: The .env file was not found at {ENV_PATH}")
+# ── Cross-Platform Environment Loader (Linux Server & Local Windows)
+SERVER_ENV_PATH = "/d01/def/app/server/.server_env"
+if os.path.exists(SERVER_ENV_PATH):
+    load_dotenv(SERVER_ENV_PATH)
+else:
+    load_dotenv()
 
 secret_key = os.getenv('JWT_SECRET_ACCESS_TOKEN')
 database_url = os.getenv("DATABASE_URL")
