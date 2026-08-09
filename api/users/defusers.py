@@ -17,6 +17,11 @@ from . import users_bp
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'}
 
 
+def get_project_root() -> str:
+    """Return the absolute normalized path to the project root directory, cross-platform."""
+    return os.path.abspath(os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -37,7 +42,7 @@ def generate_thumbnail(source_path, thumbnail_path, size=(200, 200)):
                 img = img.convert("RGB")
 
             img.thumbnail(size, Image.Resampling.LANCZOS)
-            img.save(thumbnail_path, "JPEG", quality=80, optimize=True)
+            img.save(thumbnail_path, "JPEG", quality=85, optimize=True)
             return True
     except Exception:
         try:
@@ -270,25 +275,26 @@ def upsert_profile_picture():
                 'message': f'Invalid file format. Allowed formats: {", ".join(sorted(ALLOWED_EXTENSIONS))}'
             }), 400)
 
-        # Determine extension and standardized filename: profile_{user_id}.{ext}
+        # Determine extension and standardized filename: profile_{user_id}.{ext} (lowercase for cross-platform case-sensitivity)
         ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'jpg'
         original_filename = f"profile_{user_id}.{ext}"
 
-        # Target directory: uploads/profiles/{user_id}
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        upload_dir = os.path.join(project_root, 'uploads', 'profiles', str(user_id))
+        # Target directory: uploads/profiles/{user_id} (normalized for Windows & Linux)
+        project_root = get_project_root()
+        upload_dir = os.path.normpath(os.path.join(project_root, 'uploads', 'profiles', str(user_id)))
         os.makedirs(upload_dir, exist_ok=True)
 
         # Clean up any existing old profile_{user_id}.* files to prevent stale files with different extensions
-        for existing_file in os.listdir(upload_dir):
-            if existing_file.startswith(f"profile_{user_id}."):
-                try:
-                    os.remove(os.path.join(upload_dir, existing_file))
-                except Exception:
-                    pass
+        if os.path.exists(upload_dir):
+            for existing_file in os.listdir(upload_dir):
+                if existing_file.startswith(f"profile_{user_id}."):
+                    try:
+                        os.remove(os.path.join(upload_dir, existing_file))
+                    except OSError:
+                        pass
 
-        original_file_path = os.path.join(upload_dir, original_filename)
-        thumbnail_file_path = os.path.join(upload_dir, 'thumbnail.jpg')
+        original_file_path = os.path.normpath(os.path.join(upload_dir, original_filename))
+        thumbnail_file_path = os.path.normpath(os.path.join(upload_dir, 'thumbnail.jpg'))
 
         # Save original file
         file.save(original_file_path)
@@ -296,10 +302,10 @@ def upsert_profile_picture():
         # Generate thumbnail
         generate_thumbnail(original_file_path, thumbnail_file_path, size=(200, 200))
 
-        # Relative paths stored in def_users table
+        # Relative paths stored in def_users table (always standard forward slashes for URLs and DB JSONB)
         profile_picture_data = {
-            "original": f"uploads/profiles/{user_id}/{original_filename}",
-            "thumbnail": f"uploads/profiles/{user_id}/thumbnail.jpg"
+            "original": f"uploads/profiles/{user_id}/{original_filename}".replace("\\", "/"),
+            "thumbnail": f"uploads/profiles/{user_id}/thumbnail.jpg".replace("\\", "/")
         }
 
         # Update DefUser record
@@ -358,19 +364,19 @@ def get_profile_picture():
                 'profile_picture': user.profile_picture
             }), 200)
 
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        project_root = get_project_root()
 
         # Check if thumbnail is requested (via route /thumbnail or query param ?thumbnail=true or ?type=thumbnail)
         is_thumbnail = request.path.endswith('/thumbnail') or request.args.get('thumbnail', '').lower() in ('true', '1') or request.args.get('type') == 'thumbnail'
 
         if is_thumbnail:
-            user_folder = os.path.join(project_root, 'uploads', 'profiles', str(user_id))
+            user_folder = os.path.normpath(os.path.join(project_root, 'uploads', 'profiles', str(user_id)))
             thumbnail_file = 'thumbnail.jpg'
             if os.path.exists(os.path.join(user_folder, thumbnail_file)):
                 return send_from_directory(user_folder, thumbnail_file)
 
             # Default thumbnail fallback
-            default_folder = os.path.join(project_root, 'uploads', 'profiles', 'default')
+            default_folder = os.path.normpath(os.path.join(project_root, 'uploads', 'profiles', 'default'))
             if os.path.exists(os.path.join(default_folder, 'thumbnail.jpg')):
                 return send_from_directory(default_folder, 'thumbnail.jpg')
 
@@ -378,21 +384,23 @@ def get_profile_picture():
         pic_data = user.profile_picture or {}
         orig_path = pic_data.get('original')
         if orig_path:
-            full_orig_path = os.path.join(project_root, orig_path)
+            # Normalize path slashes from DB (supports both / and \)
+            norm_rel_path = orig_path.replace("/", os.sep).replace("\\", os.sep)
+            full_orig_path = os.path.normpath(os.path.join(project_root, norm_rel_path))
             if os.path.exists(full_orig_path):
                 folder = os.path.dirname(full_orig_path)
                 filename = os.path.basename(full_orig_path)
                 return send_from_directory(folder, filename)
 
         # Search for profile_{user_id}.* in user's directory
-        user_folder = os.path.join(project_root, 'uploads', 'profiles', str(user_id))
+        user_folder = os.path.normpath(os.path.join(project_root, 'uploads', 'profiles', str(user_id)))
         if os.path.exists(user_folder):
             for fname in os.listdir(user_folder):
                 if fname.startswith(f"profile_{user_id}."):
                     return send_from_directory(user_folder, fname)
 
         # Fallback to default profile image
-        default_folder = os.path.join(project_root, 'uploads', 'profiles', 'default')
+        default_folder = os.path.normpath(os.path.join(project_root, 'uploads', 'profiles', 'default'))
         if os.path.exists(os.path.join(default_folder, 'profile.jpg')):
             return send_from_directory(default_folder, 'profile.jpg')
 
@@ -405,10 +413,12 @@ def get_profile_picture():
 @users_bp.route('/uploads/profiles/<int:user_id>/<path:filename>', methods=['GET'])
 def get_profile_picture_file(user_id, filename):
     try:
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        folder = os.path.join(project_root, 'uploads', 'profiles', str(user_id))
-        return send_from_directory(folder, filename)
+        project_root = get_project_root()
+        folder = os.path.normpath(os.path.join(project_root, 'uploads', 'profiles', str(user_id)))
+        safe_filename = os.path.basename(filename)
+        return send_from_directory(folder, safe_filename)
     except Exception as e:
         return make_response(jsonify({'message': 'File not found', 'error': str(e)}), 404)
+
 
 
