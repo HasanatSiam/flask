@@ -1,4 +1,5 @@
 import os
+import io
 import shutil
 from datetime import datetime
 from flask import request, jsonify, make_response, send_from_directory
@@ -26,13 +27,14 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def generate_thumbnail(source_path, thumbnail_path, size=(200, 200)):
+def generate_thumbnail(source_path, thumbnail_path, size=(200, 200), max_size_bytes=10 * 1024):
     try:
         from PIL import Image
         with Image.open(source_path) as img:
             if getattr(img, "is_animated", False):
                 img.seek(0)
 
+            # Handle RGBA/LA/P transparency for clean JPEG output
             if img.mode in ("RGBA", "LA", "P"):
                 rgba_img = img.convert("RGBA")
                 background = Image.new("RGB", rgba_img.size, (255, 255, 255))
@@ -41,8 +43,33 @@ def generate_thumbnail(source_path, thumbnail_path, size=(200, 200)):
             elif img.mode != "RGB":
                 img = img.convert("RGB")
 
-            img.thumbnail(size, Image.Resampling.LANCZOS)
-            img.save(thumbnail_path, "JPEG", quality=85, optimize=True)
+            # Resize without enlargement if already smaller
+            if img.width > size[0] or img.height > size[1]:
+                img.thumbnail(size, Image.Resampling.LANCZOS)
+
+            # Progressive compression starting at quality 80 down to 10 to keep size <= 10 KB
+            quality = 80
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=quality, optimize=True)
+
+            while buffer.tell() > max_size_bytes and quality > 10:
+                quality -= 5
+                buffer.seek(0)
+                buffer.truncate(0)
+                img.save(buffer, format="JPEG", quality=quality, optimize=True)
+
+            # If still exceeding 10 KB at minimum quality, scale dimensions down
+            while buffer.tell() > max_size_bytes and (img.width > 60 and img.height > 60):
+                new_size = (int(img.width * 0.8), int(img.height * 0.8))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                buffer.seek(0)
+                buffer.truncate(0)
+                img.save(buffer, format="JPEG", quality=quality, optimize=True)
+
+            # Write compressed thumbnail buffer to target path
+            with open(thumbnail_path, "wb") as f:
+                f.write(buffer.getvalue())
+
             return True
     except Exception:
         try:
@@ -226,7 +253,7 @@ def delete_user(user_id):
         return make_response(jsonify({'message': 'Error deleting user'}), 500)
 
 
-@users_bp.route('/defusers/profile_picture', methods=['POST', 'PUT'])
+@users_bp.route('/users/profile_picture', methods=['POST', 'PUT'])
 @jwt_required()
 def upsert_profile_picture():
     try:
@@ -326,8 +353,8 @@ def upsert_profile_picture():
         return make_response(jsonify({'message': 'Error uploading profile picture', 'error': str(e)}), 500)
 
 
-@users_bp.route('/defusers/profile_picture', methods=['GET'])
-@users_bp.route('/defusers/profile_picture/thumbnail', methods=['GET'])
+@users_bp.route('/users/profile_picture', methods=['GET'])
+@users_bp.route('/users/profile_picture/thumbnail', methods=['GET'])
 @jwt_required(optional=True)
 def get_profile_picture():
     try:
