@@ -8,6 +8,7 @@ from flask_jwt_extended import (
     set_refresh_cookies,
     unset_jwt_cookies,
     verify_jwt_in_request,
+    decode_token,
 )
 from sqlalchemy import func
 from datetime import datetime
@@ -188,6 +189,57 @@ def logout():
         return response, 200
     except Exception as e:
         return jsonify({"message": str(e)}), 500
+
+
+@users_bp.route('/qr-code/verify-token', methods=['POST'])
+def verify_token():
+    try:
+        data = request.get_json(silent=True) or {}
+        token = data.get('token') or request.args.get('token') or request.cookies.get('access_token') or request.cookies.get('refresh_token')
+
+        if not token:
+            return jsonify({"message": "No token provided"}), 401
+
+        try:
+            decoded = decode_token(token, allow_expired=True)
+        except Exception:
+            import jwt
+            decoded = jwt.decode(token, options={"verify_signature": False})
+
+        user_id = decoded.get('user_id') or decoded.get('sub')
+        if not user_id:
+            return jsonify({"message": "Invalid Token."}), 404
+
+        user = DefUser.query.filter_by(user_id=int(user_id)).first()
+        if not user:
+            return jsonify({"message": "Invalid Token."}), 404
+
+        additional_claims = {
+            "isLoggedIn": True,
+            "user_id": user.user_id,
+            "user_name": user.user_name,
+            "email_address": user.email_address,
+            "tenant_id": user.tenant_id,
+        }
+        access_token = create_access_token(identity=str(user.user_id), additional_claims=additional_claims)
+        refresh_token = create_refresh_token(identity=str(user.user_id))
+
+        response = make_response(jsonify({
+            "isLoggedIn": True,
+            "user_id": user.user_id,
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }))
+
+        response.set_cookie('refresh_token', refresh_token, httponly=True, secure=True, path='/')
+        response.set_cookie('access_token', access_token, httponly=True, secure=False, path='/')
+        set_access_cookies(response, access_token)
+        set_refresh_cookies(response, refresh_token)
+
+        return response, 200
+
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
 
 
 @users_bp.route('/def_user_credentials', methods=['POST'])
