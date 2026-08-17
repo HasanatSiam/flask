@@ -21,7 +21,7 @@ def get_webhook_deliveries():
             LogWebhookDelivery,
             DefWebhook.webhook_name,
             DefWebhookEvent.entity_name
-        ).outerjoin(
+        ).join(
             DefWebhook,
             LogWebhookDelivery.webhook_id == DefWebhook.webhook_id
         ).outerjoin(

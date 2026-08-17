@@ -54,33 +54,34 @@ def create_update_enterprise():
         if not tenant_id:
             return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data or 'enterprise_name' not in data or 'enterprise_type' not in data:
+            return make_response(jsonify({"message": "enterprise_name and enterprise_type are required in JSON body"}), 400)
+
         enterprise_name = data['enterprise_name']
         enterprise_type = data['enterprise_type']
         user_invitation_validity = data.get('user_invitation_validity', "1h")
 
-
         tenant_exists = DefTenant.query.filter_by(tenant_id=tenant_id).first()
         if not tenant_exists:
-            return make_response(jsonify({"message": "Tenant does not exist"}), 400)
+            return make_response(jsonify({"message": "Tenant does not exist"}), 404)
         
         existing_enterprise = DefTenantEnterpriseSetup.query.filter_by(tenant_id=tenant_id).first()
-        existing_enterprise_name  = DefTenantEnterpriseSetup.query.filter_by(enterprise_name=enterprise_name).first()
+        existing_enterprise_name = DefTenantEnterpriseSetup.query.filter_by(enterprise_name=enterprise_name).first()
         if existing_enterprise_name and (not existing_enterprise or existing_enterprise_name.tenant_id != tenant_id):
             return make_response(jsonify({"message": f"Enterprise name '{enterprise_name}' already exists."}), 409)
 
-
-
-
+        current_user = get_jwt_identity()
+        now = datetime.utcnow()
 
         if existing_enterprise:
             existing_enterprise.enterprise_name = enterprise_name
             existing_enterprise.enterprise_type = enterprise_type
             existing_enterprise.user_invitation_validity = user_invitation_validity
-            existing_enterprise.last_updated_by = get_jwt_identity()
-            existing_enterprise.last_update_date = datetime.utcnow()
-            existing_enterprise.user_invitation_validity = user_invitation_validity
+            existing_enterprise.last_updated_by = current_user
+            existing_enterprise.last_update_date = now
             message = "Edited successfully"
+            result_obj = existing_enterprise
 
         else:
             new_enterprise = DefTenantEnterpriseSetup(
@@ -88,21 +89,24 @@ def create_update_enterprise():
                 enterprise_name = enterprise_name,
                 enterprise_type = enterprise_type,
                 user_invitation_validity = user_invitation_validity,
-                created_by     = get_jwt_identity(),
-                creation_date   = datetime.utcnow(),
-                last_updated_by = get_jwt_identity(),
-                last_update_date = datetime.utcnow()
+                created_by     = current_user,
+                creation_date   = now,
+                last_updated_by = current_user,
+                last_update_date = now
             )
 
             db.session.add(new_enterprise)
             message = "Added successfully"
+            result_obj = new_enterprise
 
         db.session.commit()
-        return make_response(jsonify({"message": message, "result": new_enterprise.json() if not existing_enterprise else existing_enterprise.json()}), 200)
+        return make_response(jsonify({"message": message, "result": result_obj.json()}), 200)
 
     except IntegrityError:
+        db.session.rollback()
         return make_response(jsonify({"message": "Error creating or updating enterprise setup", "error": "Integrity error"}), 409)
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({"message": "Error creating or updating enterprise setup", "error": str(e)}), 500)
 
 
