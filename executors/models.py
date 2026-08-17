@@ -26,9 +26,9 @@ class DefTenantEnterpriseSetup(db.Model):
             'enterprise_name' : self.enterprise_name,
             'enterprise_type' : self.enterprise_type,
             'created_by'      : self.created_by,
-            'creation_date'   : self.creation_date,
+            'creation_date'   : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by': self.last_updated_by,
-            'last_update_date': self.last_update_date,
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None,
             'user_invitation_validity': self.user_invitation_validity
         }
 
@@ -77,9 +77,9 @@ class DefTenantEnterpriseSetupV(db.Model):
             'enterprise_type': self.enterprise_type,
             'user_invitation_validity': self.user_invitation_validity,
             'created_by'    : self.created_by,
-            'creation_date' : self.creation_date,
+            'creation_date' : self.creation_date.isoformat() if self.creation_date else None,
             'last_updated_by': self.last_updated_by,
-            'last_update_date': self.last_update_date
+            'last_update_date': self.last_update_date.isoformat() if self.last_update_date else None
         }
 
 class DefJobTitle(db.Model):
