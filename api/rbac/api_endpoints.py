@@ -11,6 +11,7 @@ from executors.models import (
 )
 
 from utils.auth import role_required
+from utils.rbac_scan import scan_unregistered_endpoints
 
 from . import rbac_bp
 
@@ -27,6 +28,10 @@ def create_api_endpoint():
         parameters = request.json.get('parameters')
         method = request.json.get('method')
         privilege_id = request.json.get('privilege_id')
+
+        # Normalize method casing to match request.method comparisons in role_required
+        if method:
+            method = method.upper()
 
         # Parameter validation
         if parameters is not None:
@@ -45,6 +50,15 @@ def create_api_endpoint():
         # FK validation
         if privilege_id and not DefPrivilege.query.filter_by(privilege_id=privilege_id).first():
             return make_response(jsonify({'error': 'privilege_id not found'}), 404)
+
+        # Duplicate check: one catalog row per (api_endpoint, method)
+        if api_endpoint and method and DefApiEndpoint.query.filter_by(
+            api_endpoint=api_endpoint,
+            method=method
+        ).first():
+            return make_response(jsonify({
+                'error': f'API endpoint [{method}] {api_endpoint} is already registered'
+            }), 409)
 
         new_api = DefApiEndpoint(
             api_endpoint=api_endpoint,
@@ -90,8 +104,25 @@ def get_api_endpoints():
                 }), 404)
             return make_response(jsonify({"result": endpoint.json()}), 200)
 
+        unregistered = (request.args.get('unregistered') or '').lower() in ('true', '1')
+        unassigned = (request.args.get('unassigned') or '').lower() in ('true', '1')
+
+        if unregistered and unassigned:
+            return make_response(jsonify({
+                "error": "'unassigned' and 'unregistered' filters are mutually exclusive"
+            }), 400)
+
+        if unregistered:
+            return make_response(jsonify(scan_unregistered_endpoints()), 200)
+
         # Base query
         query = DefApiEndpoint.query
+
+        if unassigned:
+            query = query.outerjoin(
+                DefApiEndpointRole,
+                DefApiEndpoint.api_endpoint_id == DefApiEndpointRole.api_endpoint_id
+            ).filter(DefApiEndpointRole.role_id.is_(None))
 
         # Search filter
         search_term = request.args.get('api_endpoint', '').strip()
