@@ -9,4 +9,3 @@ from . import api_endpoint_roles
 from . import user_granted_roles
 from . import user_granted_privileges
 from . import user_granted_roles_privileges
-# from .rbac_sync import *
