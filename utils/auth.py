@@ -6,12 +6,15 @@ from Crypto.Cipher import AES
 import base64
 import logging
 
+from sqlalchemy import func
+
 from executors.models import (
     DefUserGrantedRole,
     DefApiEndpointRole,
     DefApiEndpoint,
     DefUserGrantedPrivilege,
     DefUser,
+    DefRoles,
 )
 from executors.extensions import cache, db
 
@@ -346,3 +349,69 @@ def decrypt(encrypted_value, passphrase):
     decrypted = decrypted_padded[:-pad_len]
 
     return decrypted.decode("utf-8")
+
+
+def is_superadmin(user=None):
+    """Check if the given user (or g.user) has superadmin privileges."""
+    if user is None:
+        user = getattr(g, 'user', None)
+    if not user:
+        return False
+
+    user_type = getattr(user, 'user_type', None)
+    if user_type and str(user_type).strip().lower() in ['superadmin', 'super_admin', 'super admin']:
+        return True
+
+    user_id = getattr(user, 'user_id', None)
+    if user_id:
+        super_admin_role = (
+            db.session.query(DefUserGrantedRole)
+            .join(DefRoles, DefUserGrantedRole.role_id == DefRoles.role_id)
+            .filter(
+                DefUserGrantedRole.user_id == user_id,
+                func.lower(DefRoles.role_name).in_(['superadmin', 'super admin', 'super_admin'])
+            )
+            .first()
+        )
+        if super_admin_role is not None:
+            return True
+
+    return False
+
+
+def is_admin(user=None):
+    """Check if the given user (or g.user) has admin privileges."""
+    if user is None:
+        user = getattr(g, 'user', None)
+    if not user:
+        return False
+
+    user_type = getattr(user, 'user_type', None)
+    if user_type and str(user_type).strip().lower() in ['admin', 'tenant_admin', 'tenant admin']:
+        return True
+
+    user_id = getattr(user, 'user_id', None)
+    if user_id:
+        admin_role = (
+            db.session.query(DefUserGrantedRole)
+            .join(DefRoles, DefUserGrantedRole.role_id == DefRoles.role_id)
+            .filter(
+                DefUserGrantedRole.user_id == user_id,
+                func.lower(DefRoles.role_name).in_(['admin', 'tenant admin', 'tenant_admin'])
+            )
+            .first()
+        )
+        if admin_role is not None:
+            return True
+
+    return False
+
+
+def get_user_tenant_id(user=None):
+    """Get the tenant_id for the given user (or g.user)."""
+    if user is None:
+        user = getattr(g, 'user', None)
+    if not user:
+        return None
+    return getattr(user, 'tenant_id', None)
+
