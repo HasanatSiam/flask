@@ -13,11 +13,7 @@ from executors.models import (
 
 
 from . import tenant_enterprise_bp
-from utils.auth import role_required
-
-
-
-
+from utils.auth import role_required, is_superadmin, is_admin, get_user_tenant_id
 
 
 # Create a tenant
@@ -26,43 +22,47 @@ from utils.auth import role_required
 @role_required()
 def create_tenant():
     try:
-       data = request.get_json()
-    #    tenant_id   = generate_tenant_id()  # Call the function to get the result
-       tenant_name = data['tenant_name']
-       existing_name = DefTenant.query.filter_by(tenant_name=tenant_name).first()
-       if existing_name:
+        if not is_superadmin():
+            return make_response(jsonify({"message": "Access denied: Only superadmin can create tenants"}), 403)
+
+        data = request.get_json()
+        tenant_name = data['tenant_name']
+        existing_name = DefTenant.query.filter_by(tenant_name=tenant_name).first()
+        if existing_name:
             return make_response(jsonify({"message": "Tenant name already exists"}), 400)
 
-
-       new_tenant  = DefTenant(
-            tenant_name = tenant_name,
-            created_by     = get_jwt_identity(),
-            creation_date  = datetime.utcnow(),
-            last_updated_by = get_jwt_identity(),
-            last_update_date = datetime.utcnow()
-           )
-       db.session.add(new_tenant)
-       db.session.commit()
-       return make_response(jsonify({"message": "Added successfully", "result": new_tenant.json()}), 201)
+        new_tenant = DefTenant(
+            tenant_name=tenant_name,
+            created_by=get_jwt_identity(),
+            creation_date=datetime.utcnow(),
+            last_updated_by=get_jwt_identity(),
+            last_update_date=datetime.utcnow()
+        )
+        db.session.add(new_tenant)
+        db.session.commit()
+        return make_response(jsonify({"message": "Added successfully", "result": new_tenant.json()}), 201)
    
     except IntegrityError:
         return make_response(jsonify({"message": "Error creating Tenant", "error": "Tenant already exists"}), 409)
     except Exception as e:
         return make_response(jsonify({"message": "Error creating Tenant", "error": str(e)}), 500)
 
-       
 
 # Get all tenants
-
-
 @tenant_enterprise_bp.route('/def_tenants', methods=['GET'])
 @jwt_required()
 @role_required()
 def get_tenants():
     try:
-        tenants = DefTenant.query.order_by(
-            DefTenant.tenant_id.desc()
-        ).all()
+        if is_superadmin():
+            query = DefTenant.query
+        elif is_admin():
+            user_tenant_id = get_user_tenant_id()
+            query = DefTenant.query.filter_by(tenant_id=user_tenant_id)
+        else:
+            return make_response(jsonify({"message": "Access denied: Insufficient permissions"}), 403)
+
+        tenants = query.order_by(DefTenant.tenant_id.desc()).all()
 
         return make_response(jsonify({
             "result": [tenant.json() for tenant in tenants]
@@ -80,11 +80,18 @@ def get_tenants():
 @role_required()
 def get_tenants_v1():
     try:
-        tenants = DefTenant.query.order_by(DefTenant.tenant_id.desc()).all()
+        if is_superadmin():
+            query = DefTenant.query
+        elif is_admin():
+            user_tenant_id = get_user_tenant_id()
+            query = DefTenant.query.filter_by(tenant_id=user_tenant_id)
+        else:
+            return make_response(jsonify({"message": "Access denied: Insufficient permissions"}), 403)
+
+        tenants = query.order_by(DefTenant.tenant_id.desc()).all()
         return make_response(jsonify([tenant.json() for tenant in tenants]))
     except Exception as e:
         return make_response(jsonify({"message": "Error getting Tenants", "error": str(e)}), 500)
-
 
 
 @tenant_enterprise_bp.route('/def_tenants/<int:page>/<int:limit>', methods=['GET'])
@@ -92,7 +99,15 @@ def get_tenants_v1():
 @role_required()
 def get_paginated_tenants(page, limit):
     try:
-        query = DefTenant.query.order_by(DefTenant.tenant_id.desc())
+        if is_superadmin():
+            query = DefTenant.query
+        elif is_admin():
+            user_tenant_id = get_user_tenant_id()
+            query = DefTenant.query.filter_by(tenant_id=user_tenant_id)
+        else:
+            return make_response(jsonify({"message": "Access denied: Insufficient permissions"}), 403)
+
+        query = query.order_by(DefTenant.tenant_id.desc())
         paginated = query.paginate(page=page, per_page=limit, error_out=False)
         return make_response(jsonify({
             "items": [tenant.json() for tenant in paginated.items],
@@ -109,10 +124,17 @@ def get_paginated_tenants(page, limit):
 @role_required()
 def search_tenants(page, limit):
     try:
+        if is_superadmin():
+            query = DefTenant.query
+        elif is_admin():
+            user_tenant_id = get_user_tenant_id()
+            query = DefTenant.query.filter_by(tenant_id=user_tenant_id)
+        else:
+            return make_response(jsonify({"message": "Access denied: Insufficient permissions"}), 403)
+
         search_query = request.args.get('tenant_name', '').strip()
         search_underscore = search_query.replace(' ', '_')
         search_space = search_query.replace('_', ' ')
-        query = DefTenant.query
 
         if search_query:
             query = query.filter(
@@ -135,15 +157,18 @@ def search_tenants(page, limit):
         return make_response(jsonify({"message": "Error searching tenants", "error": str(e)}), 500)
 
 
-
 @tenant_enterprise_bp.route('/tenants/<int:tenant_id>', methods=['GET'])
 @jwt_required()
 @role_required()
 def get_tenant(tenant_id):
     try:
+        if not is_superadmin():
+            if not is_admin() or get_user_tenant_id() != tenant_id:
+                return make_response(jsonify({"message": "Access denied: You can only view your respective tenant"}), 403)
+
         tenant = DefTenant.query.filter_by(tenant_id=tenant_id).first()
         if tenant:
-            return make_response(jsonify(tenant.json()),200)
+            return make_response(jsonify(tenant.json()), 200)
         else:
             return make_response(jsonify({"message": "Tenant not found"}), 404)
     except Exception as e:
@@ -160,10 +185,14 @@ def update_tenant():
         if not tenant_id:
             return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
 
+        if not is_superadmin():
+            if not is_admin() or get_user_tenant_id() != tenant_id:
+                return make_response(jsonify({"message": "Access denied: You can only update your respective tenant"}), 403)
+
         tenant = DefTenant.query.filter_by(tenant_id=tenant_id).first()
         if tenant:
             data = request.get_json()
-            tenant.tenant_name  = data['tenant_name']
+            tenant.tenant_name = data['tenant_name']
             tenant.last_updated_by = get_jwt_identity()
             tenant.last_update_date = datetime.utcnow()
 
@@ -184,6 +213,10 @@ def delete_tenant():
         if not tenant_id:
             return make_response(jsonify({"message": "tenant_id query parameter is required"}), 400)
 
+        if not is_superadmin():
+            if not is_admin() or get_user_tenant_id() != tenant_id:
+                return make_response(jsonify({"message": "Access denied: You can only delete your respective tenant"}), 403)
+
         user = DefTenant.query.filter_by(tenant_id=tenant_id).first()
         if user:
             db.session.delete(user)
@@ -192,7 +225,8 @@ def delete_tenant():
         return make_response(jsonify({"message": "Tenant not found"}), 404)
     except Exception as e:
         return make_response(jsonify({"message": "Error deleting tenant", "error": str(e)}), 500)
-    
+
+
 @tenant_enterprise_bp.route('/tenants/cascade_delete', methods=['DELETE'])
 @jwt_required()
 @role_required()
@@ -206,6 +240,10 @@ def delete_tenant_and_related():
         if not isinstance(tenant_ids, list):
             return jsonify({"message": "'tenant_ids' must be a list"}), 400
 
+        if not is_superadmin():
+            if not is_admin() or any(tid != get_user_tenant_id() for tid in tenant_ids):
+                return jsonify({"message": "Access denied: You can only delete your respective tenant"}), 403
+
         tenants = DefTenant.query.filter(DefTenant.tenant_id.in_(tenant_ids)).all()
         if not tenants:
             return jsonify({"message": "No tenants found for provided IDs"}), 404
@@ -216,7 +254,7 @@ def delete_tenant_and_related():
 
         for tenant in tenants:
             db.session.delete(tenant)
-            
+
         db.session.commit()
 
         return jsonify({
@@ -229,4 +267,5 @@ def delete_tenant_and_related():
             "message": "Failed to delete tenant and related data",
             "error": str(e)
         }), 500
+
 
