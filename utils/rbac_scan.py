@@ -83,35 +83,91 @@ def _extract_parameters(rule, app) -> list:
     return params
 
 
+METHOD_ACTIONS = {
+    "GET": "Get",
+    "POST": "Create",
+    "PUT": "Update",
+    "PATCH": "Update",
+    "DELETE": "Delete",
+}
+
+STANDALONE_ACTIONS = {
+    "login", "logout", "signin", "signout", "signup", "register",
+    "refresh", "verify", "validate", "authenticate", "reset",
+    "toggle", "run", "execute", "stream", "poll", "subscribe",
+    "import", "export", "download", "upload", "send", "notify", "invite",
+}
+
+CRUD_VERBS = {
+    "get", "fetch", "list", "read", "find", "retrieve",
+    "create", "add", "new", "insert",
+    "update", "edit", "modify", "change", "patch",
+    "delete", "remove", "destroy",
+    "upsert", "manage",
+}
+
+
 def _generate_api_name(rule, method: str, app) -> str:
     """
-    Generate a human-readable API name in Title Case.
-    Prefers unwrapped view function name, falling back to rule.endpoint or clean path.
+    Generate a human-readable API name based on HTTP method and view function.
+
+    - For standalone actions (login, logout, refresh, verify, etc.), no method prefix is added.
+    - For CRUD operations, maps HTTP methods to actions:
+        GET    -> Get
+        POST   -> Create
+        PUT    -> Update
+        DELETE -> Delete
+    - Replaces generic/CRUD prefixes like 'upsert_' or 'manage_' with the appropriate method action.
     """
     view_func = app.view_functions.get(rule.endpoint)
-    name = None
+    raw_name = None
 
     if view_func:
         try:
             unwrapped = inspect.unwrap(view_func)
             fn_name = getattr(unwrapped, '__name__', None) or getattr(view_func, '__name__', None)
             if fn_name and fn_name not in ('wrapper', 'decorator', 'decorated_function'):
-                name = fn_name
+                raw_name = fn_name
         except Exception:
             pass
 
-    if not name and rule.endpoint:
+    if not raw_name and rule.endpoint:
         endpoint_name = rule.endpoint.split('.')[-1]
         if endpoint_name not in ('wrapper', 'decorator', 'decorated_function'):
-            name = endpoint_name
+            raw_name = endpoint_name
 
-    if name:
-        return name.replace('_', ' ').strip().title()
+    action = METHOD_ACTIONS.get(method.upper(), method.strip().title())
 
-    # Fallback: Method + Cleaned Path
+    if raw_name:
+        words = raw_name.replace('_', ' ').strip().split()
+        if words:
+            first_word = words[0].lower()
+
+            # Compound standalone words: log_in / log_out / sign_in / sign_out
+            if first_word in {'log', 'sign'} and len(words) > 1 and words[1].lower() in {'in', 'out'}:
+                return f"{words[0].title()}{words[1].title()}"
+
+            # Standalone actions (e.g. login, logout, refresh_token, verify_token)
+            if first_word in STANDALONE_ACTIONS:
+                return ' '.join(words).title()
+
+            # CRUD verbs (e.g. upsert_profile_picture -> Create Profile Picture / Update Profile Picture)
+            if first_word in CRUD_VERBS:
+                base_name = ' '.join(words[1:]).title()
+                return f"{action} {base_name}".strip() if base_name else action
+
+            # General function without leading verb (e.g. user_details -> Get User Details / Update User Details)
+            base_name = ' '.join(words).title()
+            return f"{action} {base_name}".strip()
+
+    # Fallback: Method action + Cleaned Path
     cleaned = _clean_endpoint_path(str(rule.rule)).strip('/')
-    segments = cleaned.replace('/', ' ').replace('-', ' ').replace('_', ' ')
-    return f"{method.title()} {segments.title()}".strip()
+    segments = [s for s in re.split(r'[/_-]+', cleaned) if s]
+    if segments and segments[-1].lower() in STANDALONE_ACTIONS:
+        return segments[-1].title()
+
+    base = ' '.join(segments).title()
+    return f"{action} {base}".strip() if base else action
 
 
 def scan_unregistered_endpoints() -> dict:

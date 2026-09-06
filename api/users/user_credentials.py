@@ -83,7 +83,7 @@ def login():
         return jsonify({"message": str(e)}), 500
 
 
-@users_bp.route('/auth/refresh-token', methods=['GET', 'POST'])
+@users_bp.route('/auth/refresh-token', methods=['GET'])
 def refresh_token():
     try:
         verify_jwt_in_request(refresh=True)
@@ -176,7 +176,7 @@ def get_auth_user():
 
 
 
-@users_bp.route('/logout', methods=['POST', 'GET'])
+@users_bp.route('/logout', methods=['POST'])
 def logout():
     try:
         response = make_response(jsonify({
