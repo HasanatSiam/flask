@@ -83,6 +83,37 @@ def _extract_parameters(rule, app) -> list:
     return params
 
 
+def _generate_api_name(rule, method: str, app) -> str:
+    """
+    Generate a human-readable API name in Title Case.
+    Prefers unwrapped view function name, falling back to rule.endpoint or clean path.
+    """
+    view_func = app.view_functions.get(rule.endpoint)
+    name = None
+
+    if view_func:
+        try:
+            unwrapped = inspect.unwrap(view_func)
+            fn_name = getattr(unwrapped, '__name__', None) or getattr(view_func, '__name__', None)
+            if fn_name and fn_name not in ('wrapper', 'decorator', 'decorated_function'):
+                name = fn_name
+        except Exception:
+            pass
+
+    if not name and rule.endpoint:
+        endpoint_name = rule.endpoint.split('.')[-1]
+        if endpoint_name not in ('wrapper', 'decorator', 'decorated_function'):
+            name = endpoint_name
+
+    if name:
+        return name.replace('_', ' ').strip().title()
+
+    # Fallback: Method + Cleaned Path
+    cleaned = _clean_endpoint_path(str(rule.rule)).strip('/')
+    segments = cleaned.replace('/', ' ').replace('-', ' ').replace('_', ' ')
+    return f"{method.title()} {segments.title()}".strip()
+
+
 def scan_unregistered_endpoints() -> dict:
     """
     Compare live Flask routes against the def_api_endpoints table and
@@ -107,6 +138,7 @@ def scan_unregistered_endpoints() -> dict:
         "result": [
             {
                 "api_endpoint": api_endpoint,
+                "api_name": _generate_api_name(live[(api_endpoint, method)], method, current_app),
                 "method": method,
                 "parameters": _extract_parameters(live[(api_endpoint, method)], current_app)
             }
