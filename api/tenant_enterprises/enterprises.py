@@ -1,18 +1,23 @@
-from sqlalchemy.exc import IntegrityError
 from datetime import datetime
-from flask import request, jsonify, make_response       # Flask utilities for handling requests and responses
 
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import (  # Flask utilities for handling requests and responses
+    jsonify,
+    make_response,
+    request,
+)
+from flask_jwt_extended import get_jwt_identity, jwt_required
+from sqlalchemy.exc import IntegrityError
 
 from executors.extensions import db
 from executors.models import (
     DefTenant,
     DefTenantEnterpriseSetup,
-    DefTenantEnterpriseSetupV
+    DefTenantEnterpriseSetupV,
 )
+from utils.auth import get_user_tenant_id, is_admin, is_superadmin, role_required
 
 from . import tenant_enterprise_bp
-from utils.auth import role_required, is_superadmin, is_admin, get_user_tenant_id
+
 
 # Create enterprise setup
 @tenant_enterprise_bp.route('/create_enterpriseV1/<int:tenant_id>', methods=['POST'])
