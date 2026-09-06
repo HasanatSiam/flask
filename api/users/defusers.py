@@ -257,8 +257,21 @@ def delete_user(user_id):
 @jwt_required()
 def upsert_profile_picture():
     try:
+        # Print all incoming request details for debugging
+        print("\n" + "=" * 60)
+        print(f"[API ACCESS] {request.method} {request.url}")
+        print(f"Remote IP   : {request.remote_addr}")
+        print(f"Headers     : {dict(request.headers)}")
+        print(f"Cookies     : {dict(request.cookies)}")
+        print(f"Query Args  : {request.args.to_dict()}")
+        print(f"Form Data   : {request.form.to_dict()}")
+        print(f"Files       : { {k: [(f.filename, f.content_type) for f in request.files.getlist(k)] for k in request.files.keys()} }")
+        print(f"JSON Body   : {request.get_json(silent=True)}")
+        print("=" * 60 + "\n")
+
         # Get user_id automatically from JWT identity (loaded from cookies / Authorization header)
         jwt_id = get_jwt_identity()
+        print(f"[API ACCESS] JWT Identity: {jwt_id}")
         user_id = None
 
         if jwt_id is not None:
@@ -358,8 +371,18 @@ def upsert_profile_picture():
 @jwt_required(optional=True)
 def get_profile_picture():
     try:
+        # Print incoming GET request details
+        print("\n" + "=" * 60)
+        print(f"[API ACCESS] {request.method} {request.url}")
+        print(f"Remote IP   : {request.remote_addr}")
+        print(f"Headers     : {dict(request.headers)}")
+        print(f"Cookies     : {dict(request.cookies)}")
+        print(f"Query Args  : {request.args.to_dict()}")
+        print("=" * 60 + "\n")
+
         # Get user_id automatically from JWT identity or cookies
         jwt_id = get_jwt_identity()
+        print(f"[API ACCESS] JWT Identity: {jwt_id}")
         user_id = None
 
         if jwt_id is not None:
