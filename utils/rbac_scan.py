@@ -9,7 +9,7 @@ import re
 
 from flask import current_app
 
-from executors.models import DefApiEndpoint
+from executors.models import DefApiEndpoint, DefPrivilege
 
 
 SKIP_ENDPOINTS = {"static"}
@@ -91,6 +91,15 @@ METHOD_ACTIONS = {
     "DELETE": "Delete",
 }
 
+# Maps HTTP method -> privilege name used to look up privilege_id
+METHOD_PRIVILEGE_NAMES = {
+    "GET":    "query",
+    "POST":   "create",
+    "PUT":    "update",
+    "PATCH":  "update",
+    "DELETE": "delete",
+}
+
 STANDALONE_ACTIONS = {
     "login", "logout", "signin", "signout", "signup", "register",
     "refresh", "verify", "validate", "authenticate", "reset",
@@ -170,6 +179,21 @@ def _generate_api_name(rule, method: str, app) -> str:
     return f"{action} {base}".strip() if base else action
 
 
+def _build_method_privilege_map() -> dict:
+    """
+    Query DefPrivilege once and return a mapping of
+    HTTP method -> privilege_id based on METHOD_PRIVILEGE_NAMES.
+    """
+    privilege_map = {}
+    privilege_name_to_id = {
+        row.privilege_name.lower(): row.privilege_id
+        for row in DefPrivilege.query.all()
+    }
+    for method, priv_name in METHOD_PRIVILEGE_NAMES.items():
+        privilege_map[method] = privilege_name_to_id.get(priv_name)
+    return privilege_map
+
+
 def scan_unregistered_endpoints() -> dict:
     """
     Compare live Flask routes against the def_api_endpoints table and
@@ -190,12 +214,15 @@ def scan_unregistered_endpoints() -> dict:
     }
     unregistered = sorted(key for key in live if key not in registered)
 
+    method_privilege_map = _build_method_privilege_map()
+
     return {
         "result": [
             {
                 "api_endpoint": api_endpoint,
                 "api_name": _generate_api_name(live[(api_endpoint, method)], method, current_app),
                 "method": method,
+                "privilege_id": method_privilege_map.get(method),
                 "parameters": _extract_parameters(live[(api_endpoint, method)], current_app)
             }
             for api_endpoint, method in unregistered
