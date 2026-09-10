@@ -183,24 +183,35 @@ def Update_ExecutionMethod(internal_execution_method):
         return make_response(jsonify({"message": "Error editing execution method", "error": str(e)}), 500)
 
 
-@async_task_bp.route('/Delete_ExecutionMethod/<string:internal_execution_method>', methods=['DELETE'])
+@async_task_bp.route('/Delete_ExecutionMethod', methods=['DELETE'])
 @jwt_required()
 @role_required()
-def Delete_ExecutionMethod(internal_execution_method):
+def Delete_ExecutionMethod():
     try:
-        # Find the execution method by internal_execution_method
-        execution_method = DefAsyncExecutionMethods.query.filter_by(internal_execution_method=internal_execution_method).first()
+        data = request.get_json()
+        if not data or 'internal_execution_methods' not in data:
+            return jsonify({"message": "Missing 'internal_execution_methods' in request body"}), 400
+            
+        internal_execution_methods = data['internal_execution_methods']
+        
+        if not isinstance(internal_execution_methods, list):
+            return jsonify({"message": "'internal_execution_methods' must be a list"}), 400
 
-        # If the execution method does not exist, return a 404 response
-        if not execution_method:
-            return jsonify({"message": f"Execution method with internal_execution_method '{internal_execution_method}' not found"}), 404
+        # Find the execution methods
+        execution_methods = DefAsyncExecutionMethods.query.filter(DefAsyncExecutionMethods.internal_execution_method.in_(internal_execution_methods)).all()
 
-        # Delete the execution method from the database
-        db.session.delete(execution_method)
+        if not execution_methods:
+            return jsonify({"message": "No execution methods found for the provided identifiers"}), 404
+
+        # Delete the execution methods from the database
+        for method in execution_methods:
+            db.session.delete(method)
+            
         db.session.commit()
 
-        return jsonify({"message": "Deleted successfully"}), 200
+        return jsonify({"message":"Deleted successfully"}), 200
 
     except Exception as e:
-        return jsonify({"error": "Failed to delete execution method", "details": str(e)}), 500
+        db.session.rollback()
+        return jsonify({"error": "Failed to delete execution methods", "details": str(e)}), 500
 
