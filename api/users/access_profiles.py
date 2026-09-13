@@ -122,18 +122,37 @@ def update_access_profile(user_id, serial_number):
         return make_response(jsonify({"message": "Error Editing Access Profile", "error": str(e)}), 500)
 
 
-# Delete an access profile
-@users_bp.route('/access_profiles/<int:user_id>/<int:serial_number>', methods=['DELETE'])
+# Delete access profile(s) for a user (supports single & batch via body payload)
+@users_bp.route('/access_profiles/<int:user_id>', methods=['DELETE'])
 @jwt_required()
 @role_required()
-def delete_access_profile(user_id, serial_number):
+def delete_access_profile(user_id):
     try:
-        profile = DefAccessProfile.query.filter_by(user_id=user_id, serial_number=serial_number).first()
-        if profile:
+        data = request.get_json(silent=True) or {}
+        serial_numbers = data.get('serial_numbers')
+
+        if not serial_numbers or not isinstance(serial_numbers, list):
+            return make_response(jsonify({"message": "Request body with 'serial_numbers' (list) is required"}), 400)
+
+        profiles = DefAccessProfile.query.filter(
+            DefAccessProfile.user_id == user_id,
+            DefAccessProfile.serial_number.in_(serial_numbers)
+        ).all()
+
+        if not profiles:
+            return make_response(jsonify({"message": "Access Profile not found"}), 404)
+
+        for profile in profiles:
             db.session.delete(profile)
-            db.session.commit()
-            return make_response(jsonify({"message": "Deleted successfully"}), 200)
-        return make_response(jsonify({"message": "Access Profile not found"}), 404)
+
+        db.session.commit()
+        return make_response(jsonify({"message": "Deleted successfully"}), 200)
+
     except Exception as e:
+        db.session.rollback()
         return make_response(jsonify({"message": "Error deleting Access Profile", "error": str(e)}), 500)
+
+
+
+
 
