@@ -148,27 +148,37 @@ def Update_TaskParams(task_name, def_param_id):
 
 
 
-@async_task_bp.route('/Delete_TaskParams/<string:task_name>/<int:def_param_id>', methods=['DELETE'])
+@async_task_bp.route('/Delete_TaskParams/<string:task_name>', methods=['DELETE'])
 @jwt_required()
 @role_required()
-def Delete_TaskParams(task_name, def_param_id):
+def Delete_TaskParams(task_name):
     try:
-        # Find the task parameter by task_name and seq
-        param = DefAsyncTaskParam.query.filter_by(task_name=task_name, def_param_id=def_param_id).first()
+        data = request.get_json(silent=True) or {}
+        def_param_ids = data.get('def_param_ids')
 
-        # If the parameter does not exist, return a 404 response
-        if not param:
-            return jsonify({"message": f"Parameter with def_param_id '{def_param_id}' not found for task '{task_name}'"}), 404
+        if not def_param_ids or not isinstance(def_param_ids, list):
+            return make_response(jsonify({
+                "message": "Request body with 'def_param_ids' (list) is required"
+            }), 400)
 
-        # Delete the parameter from the database
-        db.session.delete(param)
+        # Find matching parameters for the task
+        params = DefAsyncTaskParam.query.filter(
+            DefAsyncTaskParam.task_name == task_name,
+            DefAsyncTaskParam.def_param_id.in_(def_param_ids)
+        ).all()
+
+        if not params:
+            return make_response(jsonify({"message": f"No parameters found for task '{task_name}' with provided IDs"}), 404)
+
+        # Delete all matched parameters
+        for param in params:
+            db.session.delete(param)
+
         db.session.commit()
-
-        # return jsonify({"message": f"Parameter with def_param_id '{def_param_id}' successfully deleted from task '{task_name}'"}), 200
-        return jsonify({"message": "Deleted successfully"}), 200
-
+        return make_response(jsonify({"message": "Deleted successfully"}), 200)
 
     except Exception as e:
-        return jsonify({"error": "Failed to delete task parameter", "details": str(e)}), 500
+        db.session.rollback()
+        return make_response(jsonify({"error": "Failed to delete task parameter", "details": str(e)}), 500)
 
 
